@@ -220,8 +220,9 @@ export class UpsertRecordStage implements PipelineStage {
   ): Promise<string | undefined> {
     try {
       const markdown = formatNote(ctx.source?.name ?? ctx.sourceSlug, overflow);
+      const appLabel = process.env['INTAKE_APP_LABEL'] ?? 'Intake';
       const created = await coreApi.post<{ data: { createNote: { id: string } } }>('/notes', {
-        title: `${ctx.source?.name ?? 'Intake'} — Lead`,
+        title: `${ctx.source?.name ?? appLabel} — Lead`,
         bodyV2: { markdown },
       });
       const noteId = created.data.createNote.id;
@@ -241,10 +242,12 @@ export class UpsertRecordStage implements PipelineStage {
 }
 
 function buildOpportunityName(ctx: PipelineContext, assembled: Record<string, unknown>): string {
-  const template = ctx.source?.opportunityNameTemplate ?? '{{source}} — {{firstName}} {{lastName}}';
+  const appLabel = process.env['INTAKE_APP_LABEL'] ?? 'Intake';
+  const defaultTemplate = `{{source}} — {{firstName}} {{lastName}}`;
+  const template = ctx.source?.opportunityNameTemplate ?? defaultTemplate;
   const name = assembled['name'] as Record<string, string> | undefined;
   return template
-    .replace('{{source}}', ctx.source?.name ?? ctx.sourceSlug)
+    .replace('{{source}}', ctx.source?.name ?? appLabel)
     .replace('{{firstName}}', name?.['firstName'] ?? '')
     .replace('{{lastName}}', name?.['lastName'] ?? '')
     .replace('{{email}}', (assembled['emails'] as Record<string, string> | undefined)?.['primaryEmail'] ?? '')

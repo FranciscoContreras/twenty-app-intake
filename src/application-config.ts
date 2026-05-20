@@ -40,5 +40,10 @@ export default defineApplication({
       value: 'false',
       description: 'When true, every source must have a webhook secret configured and all requests must be signed. Unsigned requests are rejected with 401.',
     },
+    INTAKE_APP_LABEL: {
+      universalIdentifier: 'b3e6a2d8-9f1c-4b5e-8d7a-2c4f6e8b0a1d',
+      value: 'Intake',
+      description: 'Display name used in generated content — note titles, opportunity names, and system messages. Change to match your team\'s terminology (e.g. "Leads", "Inbound", "Pipeline").',
+    },
   },
 });

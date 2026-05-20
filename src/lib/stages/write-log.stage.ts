@@ -26,7 +26,7 @@ export class WriteLogStage implements PipelineStage {
       ctx.warnings.push('Intake log write failed');
     }
 
-    // Update source counters (non-fatal)
+    // Update source counters (non-fatal, fire-and-forget)
     if (ctx.source) {
       try {
         const current = await coreApi.get<{ data: { intakeSource: { totalIngested: number } } }>(
