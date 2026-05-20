@@ -1,15 +1,21 @@
 {
   "name": "twenty-app-intake",
-  "version": "0.1.0",
-  "description": "Intake — universal lead ingestion for Twenty CRM. Receive any payload from any source, auto-normalize fields, extend schema dynamically, and create clean records.",
+  "version": "0.2.0",
+  "description": "The missing ingestion layer for Twenty CRM. Automatically sync any webhook source — contact forms, pipeline apps, or any platform — with native schema extension, field normalization, and deduplication. Zero manual configuration required.",
   "keywords": [
     "twenty-app",
     "twenty-crm",
     "crm",
     "webhook",
     "lead-ingestion",
+    "lead-capture",
+    "contact-form",
+    "webhook-crm",
+    "crm-integration",
+    "lead-normalization",
     "form",
-    "intake"
+    "intake",
+    "automation"
   ],
   "license": "MIT",
   "engines": {

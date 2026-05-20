@@ -14,6 +14,7 @@ export class WriteLogStage implements PipelineStage {
         intakeSourceId: ctx.source?.id ?? null,
         status,
         payloadHash: ctx.payloadHash ?? '',
+        rawPayload: JSON.stringify(ctx.rawPayload).slice(0, 65000), // cap at 65k chars
         recordId: ctx.personId ?? ctx.companyId ?? null,
         recordType: ctx.recordType ?? null,
         fieldsCreated: ctx.fieldsCreated,

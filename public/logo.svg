@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
+  <!-- Background -->
+  <rect width="200" height="200" rx="40" fill="#0F172A"/>
+
+  <!-- Funnel shape — wide at top, narrow at bottom, representing data flowing in and being refined -->
+  <!-- Top wide opening -->
+  <path d="M 40 55 L 160 55 L 125 100 L 125 145 L 75 145 L 75 100 Z"
+        fill="none"
+        stroke="#FFFFFF"
+        stroke-width="10"
+        stroke-linejoin="round"
+        stroke-linecap="round"/>
+
+  <!-- Flow lines inside the funnel suggesting data movement -->
+  <line x1="75" y1="120" x2="125" y2="120" stroke="#FFFFFF" stroke-width="4" stroke-opacity="0.35" stroke-linecap="round"/>
+  <line x1="83" y1="133" x2="117" y2="133" stroke="#FFFFFF" stroke-width="4" stroke-opacity="0.2" stroke-linecap="round"/>
+
+  <!-- Small dot at the output — the clean record -->
+  <circle cx="100" cy="158" r="6" fill="#FFFFFF"/>
+</svg>

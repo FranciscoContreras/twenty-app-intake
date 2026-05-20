@@ -1,30 +1,88 @@
-# Intake
+<div align="center">
+  <img src="./public/logo.svg" width="80" height="80" alt="Intake logo" />
+  <h1>Intake</h1>
+  <p><strong>The missing ingestion layer for Twenty CRM.</strong><br/>
+  Wire any form, webhook, or data source to Twenty. Leads land clean — every time.</p>
 
-Universal lead ingestion for [Twenty CRM](https://twenty.com). Point any contact form, pipeline app, or external platform at a single webhook URL and Intake handles the rest — normalizing fields, auto-extending your schema, deduplicating records, and attaching a readable note with everything that didn't fit a field.
+  [![npm version](https://img.shields.io/npm/v/twenty-app-intake?color=0F172A&labelColor=334155&label=npm)](https://www.npmjs.com/package/twenty-app-intake)
+  [![Twenty](https://img.shields.io/badge/Twenty-%3E%3D2.5.0-0F172A?labelColor=334155)](https://twenty.com)
+  [![Tests](https://img.shields.io/badge/tests-68%20passing-22c55e?labelColor=334155)](https://github.com/FranciscoContreras/twenty-app-intake/actions)
+  [![License](https://img.shields.io/badge/license-MIT-0F172A?labelColor=334155)](./LICENSE)
+</div>
+
+---
+
+## The problem
+
+Your contact forms, pipeline scrapers, and partner APIs each have their own field names. `phone_number` here, `phoneNumber` there, `tel` somewhere else. Half the time a new field appears and breaks your Zap. The other half, someone enters a duplicate that your team has to clean manually.
+
+Intake handles all of it automatically.
 
 ## What it does
 
-- **Accepts any payload shape** — flat contact form data, nested structured objects, or anything in between
-- **Normalizes field names automatically** — `phone`, `phone_number`, `phoneNumber`, `tel`, `mobile` all map to the same field
-- **Extends your schema on the fly** — unknown fields become custom fields on Person or Company automatically, prefixed with `ext_`
-- **Deduplicates** — matches existing Person records by email and Company records by domain before creating anything new
-- **Attaches a note** — prose text, UTM params, and anything that can't become a field lands in a clean, readable markdown note linked to the record
-- **Creates the full chain** — Person → Company → Opportunity → Note in one webhook call
-- **Full audit trail** — every ingestion is logged in `IntakeLog` with status, field counts, and processing time
+Send any JSON payload to Intake's webhook. It figures out the rest.
 
-## Installation
+```bash
+curl -X POST https://your-crm.com/s/intake/getting-started \
+  -H "Content-Type: application/json" \
+  -d '{
+    "first_name": "Jane",
+    "last_name":  "Doe",
+    "email":      "jane@acme.com",
+    "phone_number": "415-555-0199",
+    "company":    "Acme Inc",
+    "message":    "Need a new website by Q3.",
+    "utm_source": "google",
+    "budget":     "25000"
+  }'
+```
+
+**What Twenty gets:**
+- ✅ Person record — Jane Doe, jane@acme.com, +1 415 555 0199
+- ✅ Company record — Acme Inc (linked to Jane)
+- ✅ Opportunity — "Getting Started — Jane Doe", stage: NEW
+- ✅ Note — message + UTM source, formatted and attached
+- ✅ Custom field `extBudget` auto-created on Person (first time only)
+
+No Zaps. No middleware. No broken automations when your form adds a field.
+
+---
+
+## How it works
+
+```
+Any JSON payload
+      │
+      ▼
+① Normalize    phone_number → phone, emailAddress → email, firstName + lastName → name
+      │
+      ▼
+② Classify     short values → CRM fields │ prose / UTMs → note
+      │
+      ▼
+③ Extend       unknown fields → auto-create ext_ custom fields on Person or Company
+      │
+      ▼
+④ Deduplicate  match by email (Person) or domain (Company) before creating anything
+      │
+      ▼
+⑤ Ingest       Person + Company + Opportunity + Note — one webhook, the full chain
+      │
+      ▼
+⑥ Log          every ingestion recorded in IntakeLog with status, timing, field counts
+```
+
+---
+
+## Get started
+
+### 1. Install
 
 From the Twenty marketplace in **Settings → Applications**, search for **Intake** and install.
 
-Or via CLI:
+On fresh install, Intake automatically creates a "Getting Started" source with a ready-to-use webhook URL.
 
-```bash
-yarn twenty install twenty-app-intake
-```
-
-## Quick start
-
-### 1. Register a source
+### 2. Register a source
 
 ```bash
 curl -X POST https://your-crm.com/s/intake/sources/register \
@@ -37,76 +95,54 @@ curl -X POST https://your-crm.com/s/intake/sources/register \
   }'
 ```
 
-Response:
-
 ```json
 {
-  "webhookUrl": "https://your-crm.com/s/intake/intake/contact-form",
+  "webhookUrl": "https://your-crm.com/s/intake/contact-form",
   "secret": "wh_live_abc123..."
 }
 ```
 
-### 2. Send a payload
+### 3. Test without writing anything
 
 ```bash
-curl -X POST https://your-crm.com/s/intake/intake/contact-form \
+curl -X POST https://your-crm.com/s/intake/contact-form/test \
   -H "Content-Type: application/json" \
-  -d '{
-    "first_name": "Jane",
-    "last_name": "Doe",
-    "email": "jane@acme.com",
-    "company": "Acme Inc",
-    "message": "Need a new website and SEO help.",
-    "utm_source": "google"
-  }'
+  -d '{"first_name":"Jane","email":"jane@co.com","budget":"15000"}'
 ```
 
-Response:
+Returns exactly what *would* be created — standard fields, custom fields to create, note preview — without touching the CRM.
 
-```json
-{
-  "success": true,
-  "recordType": "PERSON",
-  "personId": "...",
-  "companyId": "...",
-  "opportunityId": "...",
-  "fieldsCreated": 0,
-  "fieldsMatched": 6,
-  "overflowCount": 2,
-  "processingMs": 312
-}
-```
+---
 
-## Supported payload formats
+## Payload formats
 
 Intake accepts any valid JSON. No required fields.
 
-**Flat contact form:**
+**Flat (contact form):**
 ```json
 {
   "first_name": "Jane",
   "email": "jane@acme.com",
-  "phone_number": "555-0100",
-  "company": "Acme Inc",
-  "message": "Interested in your services",
+  "company": "Acme",
+  "message": "Looking for a full rebrand.",
   "utm_source": "google"
 }
 ```
 
-**Structured (company + person):**
+**Structured (pipeline app):**
 ```json
 {
   "company": {
     "name": "Acme Plumbing",
     "domainName": { "primaryLinkUrl": "https://acmeplumbing.com" },
-    "address": { "addressCity": "San Francisco", "addressState": "CA" }
+    "address": { "addressCity": "San Jose", "addressState": "CA" }
   },
   "person": {
     "name": { "firstName": "John", "lastName": "Smith" },
     "emails": { "primaryEmail": "john@acmeplumbing.com" }
   },
-  "google_places_url": "https://maps.google.com/?cid=123",
-  "google_rating": 4.2,
+  "google_rating": 4.7,
+  "review_count": 143,
   "analysis": "Strong reviews, outdated website."
 }
 ```
@@ -114,84 +150,123 @@ Intake accepts any valid JSON. No required fields.
 **Arbitrary nested:**
 ```json
 {
-  "submitted_by": { "full_name": "Maria Garcia", "contact_email": "maria@co.com" },
-  "project": { "type": "Website Redesign", "budget": "$15k" },
-  "utm_campaign": "spring-promo"
+  "submitted_by": { "full_name": "Alex Thompson", "contact_email": "alex@co.com" },
+  "project": { "type": "SaaS Dashboard", "budget": "15k" },
+  "referrer": "behance"
 }
 ```
 
-## Field normalization
+---
 
-Intake ships with built-in mappings for 100+ common field name variations:
+## Built-in field normalization
 
-| Incoming key | Canonical field |
+100+ mappings ship by default. Some highlights:
+
+| Incoming key | Twenty field |
 |---|---|
 | `phone`, `phone_number`, `phoneNumber`, `tel`, `mobile`, `cell` | `phones.primaryPhoneNumber` |
 | `email`, `email_address`, `contact_email` | `emails.primaryEmail` |
 | `first_name`, `firstName`, `fname` | `name.firstName` |
 | `last_name`, `lastName`, `surname` | `name.lastName` |
-| `name`, `full_name`, `fullName` | `name` (split into first/last) |
+| `name`, `full_name`, `fullName` | `name` (auto-split) |
 | `company`, `company_name`, `business`, `organization` | Company record |
 | `website`, `url`, `domain`, `homepage` | `domainName.primaryLinkUrl` |
-| `street`, `address_line_1` | `address.addressStreet1` |
-| `city`, `state`, `zip`, `country` | `address.*` |
-| `utm_source`, `utm_medium`, `utm_campaign`, `utm_content`, `utm_term` | Note (always) |
+| `utm_source/medium/campaign/content/term` | Note (always) |
 | `message`, `description`, `notes`, `comments`, `analysis` | Note (always) |
 
-Unknown fields are passed through with an `ext_` prefix and created as custom fields on the target object.
+Unknown fields get an `ext_` prefix and are created as custom fields the first time they appear.
+
+---
+
+## Custom field rules
+
+Add `IntakeFieldRule` records to extend or override the built-in map for a specific source or globally:
+
+| Field | Description |
+|---|---|
+| `inputPattern` | Exact key name or JavaScript regex |
+| `canonicalName` | Target field in Twenty (use `ext` prefix for custom fields) |
+| `fieldType` | `TEXT`, `NUMBER`, `LINKS`, `EMAILS`, `PHONES`, `BOOLEAN`, `DATE_TIME`, `NOTE`, or `SKIP` |
+| `priority` | Higher = checked first (0–100) |
+
+Rules with no source linked apply globally across all sources.
+
+---
 
 ## Source configuration
 
-Each source is an `IntakeSource` record with these options:
+Each `IntakeSource` record controls:
 
-| Field | Description | Default |
+| Field | Default | Description |
 |---|---|---|
-| `name` | Display name | — |
-| `slug` | URL segment — must be unique | — |
-| `targetObject` | `PERSON`, `COMPANY`, or `AUTO` | `AUTO` |
-| `webhookSecret` | HMAC-SHA256 signing secret | none (skip verification) |
-| `createOpportunity` | Auto-create an Opportunity per ingestion | `true` |
-| `opportunityNameTemplate` | Template string using `{{source}}`, `{{firstName}}`, `{{lastName}}`, `{{email}}`, `{{company}}` | `{{source}} — {{firstName}} {{lastName}}` |
+| `targetObject` | `AUTO` | `PERSON`, `COMPANY`, or auto-detect |
+| `webhookSecret` | — | HMAC-SHA256 signing secret |
+| `createOpportunity` | `true` | Auto-create Opportunity per ingestion |
+| `opportunityNameTemplate` | `{{source}} — {{firstName}} {{lastName}}` | Supports `{{source}}`, `{{firstName}}`, `{{lastName}}`, `{{email}}`, `{{company}}` |
+| `status` | `ACTIVE` | Pause a source without deleting it |
 
-Create and edit sources in **Settings → Applications → Intake → Intake Sources**, or via the registration endpoint.
+---
+
+## Workspace settings
+
+Configurable from **Settings → Applications → Intake → Custom**:
+
+| Setting | Default | Description |
+|---|---|---|
+| `INTAKE_APP_LABEL` | `Intake` | Name used in note titles and opportunity names |
+| `INTAKE_DEFAULT_OPP_STAGE` | `NEW` | Stage for auto-created Opportunities |
+| `INTAKE_FIELD_CREATION_ENABLED` | `true` | Toggle auto-schema extension |
+| `INTAKE_MAX_EXT_FIELDS` | `50` | Cap on custom fields per object |
+| `INTAKE_DEDUP_WINDOW_MINUTES` | `5` | Duplicate suppression window |
+| `INTAKE_REQUIRE_HMAC` | `false` | Enforce signed webhooks globally |
+
+---
 
 ## Webhook security
 
-If a `webhookSecret` is set on the source, Intake verifies the `X-Webhook-Signature` header using HMAC-SHA256:
+Sign requests with `HMAC-SHA256` using the source's secret:
 
+```bash
+SECRET="your-signing-secret"
+PAYLOAD='{"email":"jane@co.com"}'
+SIGNATURE=$(echo -n "$PAYLOAD" | openssl dgst -sha256 -hmac "$SECRET" | awk '{print $2}')
+
+curl -X POST https://your-crm.com/s/intake/contact-form \
+  -H "Content-Type: application/json" \
+  -H "X-Webhook-Signature: sha256=$SIGNATURE" \
+  -d "$PAYLOAD"
 ```
-X-Webhook-Signature: sha256=<hex_digest>
-```
 
-The digest is computed over the raw request body using the source's secret. Requests with missing or invalid signatures are rejected with `401`.
+Sources without a secret accept unsigned requests — useful for internal tools. Set `INTAKE_REQUIRE_HMAC=true` to enforce signatures globally.
 
-Sources without a secret accept all requests — useful for internal tools or trusted platforms.
+---
 
 ## Endpoints
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| `POST` | `/s/intake/intake/:slug` | HMAC or open | Ingest a payload |
-| `GET` | `/s/intake/intake/health` | None | Health check |
-| `POST` | `/s/intake/sources/register` | Twenty API key | Register a new source |
+| `POST` | `/s/intake/:slug` | HMAC or open | Ingest a payload |
+| `POST` | `/s/intake/:slug/test` | None | Dry-run — preview without writing |
+| `POST` | `/s/intake/logs/:logId/retry` | API key | Retry a failed ingestion |
+| `GET` | `/s/intake/health` | None | Health check |
+| `POST` | `/s/intake/sources/register` | API key | Register a new source |
 
-## Custom field rules
+---
 
-Add `IntakeFieldRule` records to override the built-in normalization for a specific source or globally:
+## Retry failed ingestions
 
-| Field | Description |
-|---|---|
-| `inputPattern` | Exact key name or JavaScript regex |
-| `canonicalName` | Target field in Twenty (use `ext_` prefix for custom fields) |
-| `fieldType` | `TEXT`, `NUMBER`, `LINKS`, `EMAILS`, `PHONES`, `BOOLEAN`, `DATE_TIME`, `NOTE`, or `SKIP` |
-| `priority` | Higher rules are checked first |
+Every ingestion is logged in `IntakeLog`. Failed logs can be retried from the record's detail page in Twenty, or via API:
 
-Rules with no source linked apply globally across all sources.
+```bash
+curl -X POST https://your-crm.com/s/intake/logs/LOG_ID/retry \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+---
 
 ## Development
 
 ```bash
-# Clone and install
 git clone https://github.com/FranciscoContreras/twenty-app-intake
 cd twenty-app-intake
 yarn install
@@ -199,19 +274,32 @@ yarn install
 # Run unit tests
 yarn test
 
-# Watch mode
-yarn test:watch
-
 # Connect to your Twenty instance
 yarn twenty remote add --api-url https://your-crm.com --api-key YOUR_KEY --as production
 
-# Sync to server (watch mode)
+# Sync in watch mode
 yarn twenty dev
 
 # One-shot sync
 yarn twenty dev --once
 ```
 
+---
+
+## vs. the alternatives
+
+| | Intake | Zapier/Make | Hookdeck | Custom webhook |
+|---|---|---|---|---|
+| Zero config | ✅ | ❌ Manual mapping | ❌ Write ingestion logic | ❌ Build everything |
+| Auto schema extension | ✅ | ❌ New fields break flows | ❌ | ❌ |
+| Native Twenty objects | ✅ | ❌ | ❌ | ❌ |
+| Deduplication | ✅ | Partial | ❌ | Roll your own |
+| Audit log | ✅ | ❌ | ✅ | ❌ |
+| Self-hosted | ✅ | ❌ | Paid | ✅ |
+| Open source | ✅ MIT | ❌ | ❌ | ✅ |
+
+---
+
 ## License
 
-MIT
+MIT — [FranciscoContreras](https://github.com/FranciscoContreras)

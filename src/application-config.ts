@@ -1,6 +1,7 @@
 import { defineApplication } from 'twenty-sdk/define';
 import defaultRole from './default-role';
 import { IDS } from './constants/universal-identifiers';
+import postInstall from './post-install';
 
 export const APPLICATION_UNIVERSAL_IDENTIFIER = IDS.APPLICATION;
 
@@ -9,12 +10,16 @@ export default defineApplication({
   name: 'twenty-app-intake',
   displayName: 'Intake',
   description:
-    'Receive leads from any source — contact forms, pipeline apps, or any platform — and automatically normalize, classify, and ingest them into Twenty as clean records. Zero manual field configuration required.',
+    'The missing ingestion layer for Twenty CRM. Wire any contact form, pipeline app, or webhook source to Twenty — fields normalize automatically, schema extends on the fly, duplicates never land twice.',
   category: 'data',
-  logoUrl: 'https://raw.githubusercontent.com/your-org/twenty-app-intake/main/public/logo.png',
-  websiteUrl: 'https://github.com/your-org/twenty-app-intake',
+  logoUrl: 'https://raw.githubusercontent.com/FranciscoContreras/twenty-app-intake/main/public/logo.svg',
+  websiteUrl: 'https://github.com/FranciscoContreras/twenty-app-intake',
   defaultRoleUniversalIdentifier: defaultRole.universalIdentifier,
   settingsCustomTabFrontComponentUniversalIdentifier: '4e4cfb3b-508c-413b-a1b2-192a51c31ed4',
+  postInstallLogicFunction: {
+    universalIdentifier: postInstall.universalIdentifier,
+    shouldRunSynchronously: true,
+  },
   applicationVariables: {
     INTAKE_FIELD_CREATION_ENABLED: {
       universalIdentifier: '3f4e8f8b-12aa-4c86-95b3-1a6620102a9d',

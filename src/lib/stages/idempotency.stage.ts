@@ -12,6 +12,10 @@ export class IdempotencyStage implements PipelineStage {
   async execute(ctx: PipelineContext): Promise<Result<PipelineContext>> {
     const hash = computePayloadHash(ctx.rawPayload);
 
+    // Retry path — skip dedup so previously seen payloads can be re-run
+    if (ctx.skipDedup) return ok({ ...ctx, payloadHash: hash });
+
+
     // Check if we've seen this payload recently
     const existing = await this.client.query({
       intakeLogs: {

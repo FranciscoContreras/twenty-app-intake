@@ -107,6 +107,16 @@ export default defineObject({
       icon: 'IconCalendar',
     },
     {
+      universalIdentifier: IDS.INTAKE_LOG_RAW_PAYLOAD,
+      name: 'rawPayload',
+      type: FieldType.TEXT,
+      label: 'Raw Payload',
+      description: 'The original JSON payload — used for retrying failed ingestions.',
+      icon: 'IconCode',
+      isNullable: true,
+      defaultValue: null,
+    },
+    {
       universalIdentifier: IDS.INTAKE_LOG_SOURCE_RELATION,
       name: 'intakeSource',
       type: FieldType.RELATION,

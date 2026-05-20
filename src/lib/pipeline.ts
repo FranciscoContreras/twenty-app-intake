@@ -43,6 +43,9 @@ export type PipelineContext = {
   noteId?: string;
   recordType?: 'PERSON' | 'COMPANY';
 
+  // ── Flags ──────────────────────────────────────────────────────────────
+  skipDedup?: boolean;
+
   // ── Diagnostics ────────────────────────────────────────────────────────
   warnings: string[];
   events: PipelineEvent[];
