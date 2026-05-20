@@ -9,8 +9,12 @@ export class VerifySignatureStage implements PipelineStage {
   async execute(ctx: PipelineContext): Promise<Result<PipelineContext>> {
     const secret = ctx.source?.webhookSecret;
 
-    // No secret configured — skip verification
-    if (!secret) return ok(ctx);
+    // If INTAKE_REQUIRE_HMAC is enabled globally, reject sources without a secret
+    const requireHmac = process.env['INTAKE_REQUIRE_HMAC'] === 'true';
+    if (!secret) {
+      if (requireHmac) return err(ErrorCode.INVALID_SIGNATURE, 'This source has no webhook secret — INTAKE_REQUIRE_HMAC is enabled');
+      return ok(ctx);
+    }
 
     const signature = ctx.headers['x-webhook-signature'];
     if (!signature) {

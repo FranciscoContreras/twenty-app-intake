@@ -199,7 +199,8 @@ export class UpsertRecordStage implements PipelineStage {
   ): Promise<string | undefined> {
     try {
       const name = buildOpportunityName(ctx, assembled);
-      const data: Record<string, unknown> = { name, stage: 'NEW' };
+      const stage = process.env['INTAKE_DEFAULT_OPP_STAGE'] ?? 'NEW';
+      const data: Record<string, unknown> = { name, stage };
       if (personId) data['pointOfContactId'] = personId;
       if (companyId) data['companyId'] = companyId;
 

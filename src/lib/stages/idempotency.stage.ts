@@ -33,7 +33,8 @@ export class IdempotencyStage implements PipelineStage {
 
     const prior = existing.intakeLogs?.edges?.[0]?.node;
 
-    if (prior && withinWindow(new Date(prior.processedAt))) {
+    const windowMins = parseInt(process.env['INTAKE_DEDUP_WINDOW_MINUTES'] ?? '5', 10);
+    if (prior && withinWindow(new Date(prior.processedAt), windowMins * 60 * 1000)) {
       return err(
         ErrorCode.DUPLICATE_PAYLOAD,
         `Duplicate payload — already processed ${prior.status.toLowerCase()} (log ${prior.id})`,

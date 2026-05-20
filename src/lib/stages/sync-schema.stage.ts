@@ -18,6 +18,12 @@ export class SyncSchemaStage implements PipelineStage {
   async execute(ctx: PipelineContext): Promise<Result<PipelineContext>> {
     if (!ctx.crmFields || ctx.crmFields.length === 0) return ok(ctx);
 
+    // Respect global field creation toggle
+    if (process.env['INTAKE_FIELD_CREATION_ENABLED'] === 'false') {
+      ctx.warnings.push('Field creation disabled by INTAKE_FIELD_CREATION_ENABLED setting — ext fields skipped');
+      return ok(ctx);
+    }
+
     const targets = this.targetObjects(ctx);
     let fieldsCreated = 0;
     let fieldsMatched = 0;
@@ -26,11 +32,19 @@ export class SyncSchemaStage implements PipelineStage {
       const meta = await this.getObjectMeta(objectName);
       if (!meta) continue;
 
+      const maxExt = parseInt(process.env['INTAKE_MAX_EXT_FIELDS'] ?? '50', 10);
+      const currentExtCount = [...meta.fields].filter(f => /^ext[A-Z]/.test(f)).length;
+
       for (const field of ctx.crmFields) {
         if (STANDARD_FIELDS.has(field.canonicalName)) { fieldsMatched++; continue; }
         if (!/^ext[A-Z]/.test(field.canonicalName)) { fieldsMatched++; continue; }
 
         if (meta.fields.has(field.canonicalName)) { fieldsMatched++; continue; }
+
+        if (currentExtCount >= maxExt) {
+          ctx.warnings.push(`ext field limit (${maxExt}) reached for ${objectName} — "${field.canonicalName}" goes to note`);
+          continue;
+        }
 
         const created = await this.createField(meta.id, field.canonicalName, field.twentyType);
         if (created) {
