@@ -14,6 +14,7 @@ export default defineApplication({
   logoUrl: 'https://raw.githubusercontent.com/your-org/twenty-app-intake/main/public/logo.png',
   websiteUrl: 'https://github.com/your-org/twenty-app-intake',
   defaultRoleUniversalIdentifier: defaultRole.universalIdentifier,
+  settingsCustomTabFrontComponentUniversalIdentifier: '4e4cfb3b-508c-413b-a1b2-192a51c31ed4',
   applicationVariables: {
     INTAKE_FIELD_CREATION_ENABLED: {
       universalIdentifier: '3f4e8f8b-12aa-4c86-95b3-1a6620102a9d',
