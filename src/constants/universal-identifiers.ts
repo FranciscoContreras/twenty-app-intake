@@ -45,6 +45,10 @@ export const IDS = {
   HEALTH_LOGIC_FUNCTION: '4ece4e39-286b-4820-81f4-b7beee71d092',
   REGISTER_LOGIC_FUNCTION: '56d46e18-6cae-4d99-9893-b7d70740c9db',
 
+  // IntakeSource reverse relation fields
+  INTAKE_SOURCE_LOGS_REVERSE: '6ecfa369-22e0-4812-bb75-4338cea8be65',
+  INTAKE_SOURCE_RULES_REVERSE: '776fefaf-0eee-4ec0-93e0-d11bd80c1e20',
+
   // Views & Navigation
   SOURCES_VIEW: '4435cd43-5c13-472f-b4f9-b686c0f46285',
   LOGS_VIEW: 'a2cd0a93-9778-4ba5-99d9-b8b89c4fb39d',

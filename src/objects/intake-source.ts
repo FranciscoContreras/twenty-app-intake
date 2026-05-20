@@ -1,4 +1,4 @@
-import { defineObject, FieldType } from 'twenty-sdk/define';
+import { defineObject, FieldType, RelationType, OnDeleteAction } from 'twenty-sdk/define';
 import { IDS } from '../constants/universal-identifiers';
 
 export default defineObject({
@@ -104,6 +104,34 @@ export default defineObject({
       icon: 'IconClock',
       isNullable: true,
       defaultValue: null,
+    },
+    {
+      universalIdentifier: IDS.INTAKE_SOURCE_LOGS_REVERSE,
+      name: 'intakeLogs',
+      type: FieldType.RELATION,
+      label: 'Intake Logs',
+      icon: 'IconListDetails',
+      isNullable: true,
+      defaultValue: null,
+      relationTargetObjectMetadataUniversalIdentifier: IDS.INTAKE_LOG_OBJECT,
+      relationTargetFieldMetadataUniversalIdentifier: IDS.INTAKE_LOG_SOURCE_RELATION,
+      universalSettings: {
+        relationType: RelationType.ONE_TO_MANY,
+      },
+    },
+    {
+      universalIdentifier: IDS.INTAKE_SOURCE_RULES_REVERSE,
+      name: 'intakeFieldRules',
+      type: FieldType.RELATION,
+      label: 'Field Rules',
+      icon: 'IconArrowsExchange',
+      isNullable: true,
+      defaultValue: null,
+      relationTargetObjectMetadataUniversalIdentifier: IDS.INTAKE_FIELD_RULE_OBJECT,
+      relationTargetFieldMetadataUniversalIdentifier: IDS.INTAKE_FIELD_RULE_SOURCE_RELATION,
+      universalSettings: {
+        relationType: RelationType.ONE_TO_MANY,
+      },
     },
   ],
 });

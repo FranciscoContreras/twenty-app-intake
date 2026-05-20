@@ -1,4 +1,4 @@
-import { defineObject, FieldType } from 'twenty-sdk/define';
+import { defineObject, FieldType, RelationType, OnDeleteAction } from 'twenty-sdk/define';
 import { IDS } from '../constants/universal-identifiers';
 
 export default defineObject({
@@ -61,6 +61,23 @@ export default defineObject({
       label: 'Active',
       icon: 'IconToggleRight',
       defaultValue: "'true'",
+    },
+    {
+      universalIdentifier: IDS.INTAKE_FIELD_RULE_SOURCE_RELATION,
+      name: 'intakeSource',
+      type: FieldType.RELATION,
+      label: 'Source',
+      description: 'Leave empty to make this a global rule that applies to all sources.',
+      icon: 'IconRadar2',
+      isNullable: true,
+      defaultValue: null,
+      relationTargetObjectMetadataUniversalIdentifier: IDS.INTAKE_SOURCE_OBJECT,
+      relationTargetFieldMetadataUniversalIdentifier: IDS.INTAKE_SOURCE_RULES_REVERSE,
+      universalSettings: {
+        relationType: RelationType.MANY_TO_ONE,
+        onDelete: OnDeleteAction.SET_NULL,
+        joinColumnName: 'intakeSourceId',
+      },
     },
   ],
 });
