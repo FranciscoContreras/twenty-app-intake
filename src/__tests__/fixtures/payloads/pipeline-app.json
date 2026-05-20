@@ -1,0 +1,35 @@
+{
+  "company": {
+    "name": "Acme Plumbing",
+    "domainName": {
+      "primaryLinkUrl": "https://acmeplumbing.com",
+      "primaryLinkLabel": ""
+    },
+    "address": {
+      "addressStreet1": "472 Main St",
+      "addressCity": "Hollister",
+      "addressState": "CA",
+      "addressPostcode": "95023",
+      "addressCountry": "United States"
+    }
+  },
+  "person": {
+    "name": {
+      "firstName": "John",
+      "lastName": "Smith"
+    },
+    "emails": {
+      "primaryEmail": "john@acmeplumbing.com"
+    },
+    "phones": {
+      "primaryPhoneNumber": "8314155550",
+      "primaryPhoneCountryCode": "US",
+      "primaryPhoneCallingCode": "+1"
+    }
+  },
+  "google_places_url": "https://maps.google.com/?cid=123456",
+  "google_rating": 4.2,
+  "review_count": 87,
+  "marketing_score": 72,
+  "analysis": "This business has an outdated website with no SEO presence. Strong reviews suggest good service quality. High opportunity for digital marketing services."
+}

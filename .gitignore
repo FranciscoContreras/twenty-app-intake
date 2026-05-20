@@ -1,0 +1,22 @@
+# Yarn Berry
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+.pnp.*
+
+# Dependencies
+node_modules/
+
+# Twenty SDK output and credentials
+.twenty/
+
+# Build
+dist/
+*.tsbuildinfo
+
+# Env / secrets
+.env
+.env.*
+*.local

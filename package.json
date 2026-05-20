@@ -1,0 +1,46 @@
+{
+  "name": "twenty-app-intake",
+  "version": "0.1.0",
+  "description": "Intake — universal lead ingestion for Twenty CRM. Receive any payload from any source, auto-normalize fields, extend schema dynamically, and create clean records.",
+  "keywords": [
+    "twenty-app",
+    "twenty-crm",
+    "crm",
+    "webhook",
+    "lead-ingestion",
+    "form",
+    "intake"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=24.0.0",
+    "twenty": ">=2.5.0"
+  },
+  "scripts": {
+    "twenty": "twenty",
+    "test": "vitest run --config vitest.config.ts",
+    "test:watch": "vitest --config vitest.config.ts",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:coverage": "vitest run --config vitest.config.ts --coverage",
+    "typecheck": "tsc --noEmit",
+    "build": "twenty build",
+    "publish:app": "twenty publish"
+  },
+  "dependencies": {
+    "cockatiel": "^3.2.1",
+    "neverthrow": "^8.0.0",
+    "twenty-client-sdk": "^2.5.1",
+    "twenty-sdk": "^2.5.1"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.27.0",
+    "@vitest/coverage-v8": "^3.2.0",
+    "fast-check": "^3.22.0",
+    "tsup": "^8.0.0",
+    "typescript": "~5.8.3",
+    "vite": "^8.0.13",
+    "vite-tsconfig-paths": "^5.1.4",
+    "vitest": "^3.2.0"
+  },
+  "packageManager": "yarn@4.9.1+sha512.f95ce356460e05be48d66401c1ae64ef84d163dd689964962c6888a9810865e39097a5e9de748876c2e0bf89b232d583c33982773e9903ae7a76257270986538"
+}

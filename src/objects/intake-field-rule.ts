@@ -1,0 +1,66 @@
+import { defineObject, FieldType } from 'twenty-sdk/define';
+import { IDS } from '../constants/universal-identifiers';
+
+export default defineObject({
+  universalIdentifier: IDS.INTAKE_FIELD_RULE_OBJECT,
+  nameSingular: 'intakeFieldRule',
+  namePlural: 'intakeFieldRules',
+  labelSingular: 'Field Rule',
+  labelPlural: 'Field Rules',
+  description: 'User-configurable normalization rules. Global rules apply to all sources; source-specific rules override them.',
+  icon: 'IconArrowsExchange',
+  fields: [
+    {
+      universalIdentifier: IDS.INTAKE_FIELD_RULE_INPUT_PATTERN,
+      name: 'inputPattern',
+      type: FieldType.TEXT,
+      label: 'Input Pattern',
+      description: 'Exact key name or a JavaScript regex string to match against incoming field names.',
+      icon: 'IconSearch',
+    },
+    {
+      universalIdentifier: IDS.INTAKE_FIELD_RULE_CANONICAL_NAME,
+      name: 'canonicalName',
+      type: FieldType.TEXT,
+      label: 'Canonical Field Name',
+      description: 'The target field name in Twenty. Use ext_ prefix for custom fields.',
+      icon: 'IconTag',
+    },
+    {
+      universalIdentifier: IDS.INTAKE_FIELD_RULE_FIELD_TYPE,
+      name: 'fieldType',
+      type: FieldType.SELECT,
+      label: 'Field Type',
+      icon: 'IconDatabase',
+      options: [
+        { value: 'TEXT', label: 'Text', position: 0, color: 'gray' },
+        { value: 'NUMBER', label: 'Number', position: 1, color: 'blue' },
+        { value: 'BOOLEAN', label: 'Boolean', position: 2, color: 'green' },
+        { value: 'DATE_TIME', label: 'Date/Time', position: 3, color: 'orange' },
+        { value: 'LINKS', label: 'Link', position: 4, color: 'purple' },
+        { value: 'EMAILS', label: 'Email', position: 5, color: 'turquoise' },
+        { value: 'PHONES', label: 'Phone', position: 6, color: 'pink' },
+        { value: 'NOTE', label: 'Always Note', position: 7, color: 'yellow' },
+        { value: 'SKIP', label: 'Skip', position: 8, color: 'red' },
+      ],
+      defaultValue: "'TEXT'",
+    },
+    {
+      universalIdentifier: IDS.INTAKE_FIELD_RULE_PRIORITY,
+      name: 'priority',
+      type: FieldType.NUMBER,
+      label: 'Priority',
+      description: 'Higher priority rules are checked first. Default 0.',
+      icon: 'IconSortAscending',
+      defaultValue: 0,
+    },
+    {
+      universalIdentifier: IDS.INTAKE_FIELD_RULE_IS_ACTIVE,
+      name: 'isActive',
+      type: FieldType.BOOLEAN,
+      label: 'Active',
+      icon: 'IconToggleRight',
+      defaultValue: "'true'",
+    },
+  ],
+});
