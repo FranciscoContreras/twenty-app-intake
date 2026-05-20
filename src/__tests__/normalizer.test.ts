@@ -47,9 +47,9 @@ describe('normalizeFields — built-in map', () => {
 });
 
 describe('normalizeFields — passthrough', () => {
-  it('prefixes unknown field names with ext_', () => {
-    const [f] = normalizeFields({ bizType: 'plumbing' });
-    expect(f?.canonicalName).toMatch(/^ext_/);
+  it('prefixes unknown field names with extCamelCase', () => {
+    const [f] = normalizeFields({ biz_type: 'plumbing' });
+    expect(f?.canonicalName).toBe('extBizType');
     expect(f?.source).toBe('passthrough');
   });
 

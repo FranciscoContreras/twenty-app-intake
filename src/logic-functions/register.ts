@@ -88,8 +88,7 @@ const handler = async (params: RoutePayload) => {
 
 function buildWebhookUrl(slug: string): string {
   const baseUrl = process.env['TWENTY_API_URL'] ?? 'https://your-crm.com';
-  const appSlug = 'intake';
-  return `${baseUrl}/s/${appSlug}/intake/${slug}`;
+  return `${baseUrl}/s/intake/${slug}`;
 }
 
 export default defineLogicFunction({

@@ -10,24 +10,17 @@ export class FlattenStage implements PipelineStage {
     const structure = detectStructure(ctx.rawPayload);
 
     if (structure.type === 'structured') {
-      // Merge all parts into one flat record for the normalizer.
-      // Company fields are prefixed with 'company_' to keep them identifiable
-      // when we later route them to the right object.
-      const flat: Record<string, unknown> = {};
+      // For structured payloads (pipeline app format), company and person are
+      // already in Twenty's native format. Only normalize the extra fields
+      // (pipeline-specific data: ratings, scores, analysis, etc.)
+      const extraFlat = flatten(structure.extra ?? {});
 
-      if (structure.company) {
-        for (const [k, v] of Object.entries(structure.company)) {
-          flat[`__company_${k}`] = v;
-        }
-      }
-      if (structure.person) {
-        for (const [k, v] of Object.entries(structure.person)) {
-          flat[k] = v;
-        }
-      }
-      Object.assign(flat, structure.extra);
-
-      return ok({ ...ctx, flat });
+      return ok({
+        ...ctx,
+        structuredCompany: structure.company ?? undefined,
+        structuredPerson: structure.person ?? undefined,
+        flat: extraFlat,
+      });
     }
 
     // Flat format — already a top-level key→value record

@@ -83,8 +83,10 @@ export function detectStructure(raw: unknown): PayloadStructure {
     return { type: 'flat', data: flatten(obj) };
   }
 
-  const company = hasObjectCompany ? flatten(obj['company'] as object) : null;
-  const person = hasObjectPerson ? flatten(obj['person'] as object) : null;
+  // Keep company and person in their original nested form — they are already
+  // in Twenty's native composite format (domainName, address, emails, phones, etc.)
+  const company = hasObjectCompany ? (obj['company'] as FlatRecord) : null;
+  const person = hasObjectPerson ? (obj['person'] as FlatRecord) : null;
 
   const extra: FlatRecord = {};
   for (const [k, v] of Object.entries(obj)) {

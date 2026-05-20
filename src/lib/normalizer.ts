@@ -88,7 +88,7 @@ function normalizeField(
   const classification = classify(key, value);
   const canonicalName =
     classification === 'field'
-      ? `ext_${toSnakeCase(key)}`
+      ? toExtFieldName(key)
       : lookupKey;
 
   return {
@@ -101,13 +101,12 @@ function normalizeField(
   };
 }
 
-function toSnakeCase(key: string): string {
-  return key
-    .replace(/([A-Z])/g, '_$1')
-    .toLowerCase()
-    .replace(/[-\s.]/g, '_')
-    .replace(/_{2,}/g, '_')
-    .replace(/^_|_$/g, '');
+/** Convert any key to a valid Twenty custom field name: extPascalCase */
+function toExtFieldName(key: string): string {
+  const cleaned = key
+    .replace(/[-_\s]+([a-zA-Z0-9])/g, (_, c: string) => c.toUpperCase())
+    .replace(/[^a-zA-Z0-9]/g, '');
+  return 'ext' + cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
 }
 
 /**

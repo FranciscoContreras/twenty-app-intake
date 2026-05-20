@@ -26,6 +26,8 @@ export type PipelineContext = {
 
   // ── Transformation ─────────────────────────────────────────────────────
   flat?: Record<string, unknown>;
+  structuredCompany?: Record<string, unknown>;
+  structuredPerson?: Record<string, unknown>;
   normalizedFields?: NormalizedField[];
   crmFields?: NormalizedField[];
   noteFields?: NormalizedField[];
