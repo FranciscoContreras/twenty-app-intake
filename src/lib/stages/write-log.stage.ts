@@ -11,7 +11,6 @@ export class WriteLogStage implements PipelineStage {
       const status = ctx.personId || ctx.companyId ? 'SUCCESS' : 'PARTIAL';
 
       await coreApi.post('/intakeLogs', {
-        intakeSourceId: ctx.source?.id ?? null,
         status,
         payloadHash: ctx.payloadHash ?? '',
         recordId: ctx.personId ?? ctx.companyId ?? null,
