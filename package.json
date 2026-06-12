@@ -1,6 +1,6 @@
 {
   "name": "twenty-app-intake",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "The missing ingestion layer for Twenty CRM. Automatically sync any webhook source — contact forms, pipeline apps, or any platform — with native schema extension, field normalization, and deduplication. Zero manual configuration required.",
   "keywords": [
     "twenty-app",
@@ -30,7 +30,7 @@
     "test:coverage": "vitest run --config vitest.config.ts --coverage",
     "typecheck": "twenty typecheck",
     "build": "twenty build",
-    "publish:app": "twenty publish"
+    "publish:app": "twenty build && cp README.md LICENSE .twenty/output/ && npm publish .twenty/output"
   },
   "dependencies": {
     "cockatiel": "^3.2.1",

@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.2.1] - 2026-06-12
+
+### Fixed
+- **README and LICENSE now ship in the npm package** — `twenty publish` only packs the compiled `.twenty/output/`, which omitted `README.md` and `LICENSE`, leaving the npm listing with "No README data found". The `publish:app` script now copies both into the build output before publishing.
+
+### Added
+- `LICENSE` file (MIT) — previously referenced in the README and `package.json` but missing from the repo.
+
+### Changed
+- `typecheck` script now runs `twenty typecheck` (SDK-aware) instead of raw `tsc --noEmit`, which failed against a tsconfig without node types, DOM lib, or the JSX flag.
+
 ## [0.2.0] - 2026-05-20
 
 ### Added
