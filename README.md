@@ -8,6 +8,9 @@
   [![Twenty](https://img.shields.io/badge/Twenty-%3E%3D2.5.0-0F172A?labelColor=334155)](https://twenty.com)
   [![Tests](https://img.shields.io/badge/tests-68%20passing-22c55e?labelColor=334155)](https://github.com/FranciscoContreras/twenty-app-intake/actions)
   [![License](https://img.shields.io/badge/license-MIT-0F172A?labelColor=334155)](./LICENSE)
+  [![Website](https://img.shields.io/badge/website-wearemachina.com-0F172A?labelColor=334155)](https://wearemachina.com)
+
+  <sub>Built by <a href="https://wearemachina.com"><strong>Machina</strong></a></sub>
 </div>
 
 ---
@@ -302,4 +305,4 @@ yarn twenty dev --once
 
 ## License
 
-MIT — [FranciscoContreras](https://github.com/FranciscoContreras)
+MIT — built by [Machina](https://wearemachina.com) · [FranciscoContreras](https://github.com/FranciscoContreras)

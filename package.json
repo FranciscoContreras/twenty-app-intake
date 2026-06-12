@@ -18,6 +18,12 @@
     "automation"
   ],
   "license": "MIT",
+  "homepage": "https://wearemachina.com",
+  "author": "Machina (https://wearemachina.com)",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/FranciscoContreras/twenty-app-intake.git"
+  },
   "engines": {
     "node": ">=24.0.0",
     "twenty": ">=2.5.0"
