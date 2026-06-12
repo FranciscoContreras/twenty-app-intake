@@ -28,7 +28,7 @@
     "test:watch": "vitest --config vitest.config.ts",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:coverage": "vitest run --config vitest.config.ts --coverage",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "twenty typecheck",
     "build": "twenty build",
     "publish:app": "twenty publish"
   },
