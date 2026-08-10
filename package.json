@@ -1,6 +1,6 @@
 {
   "name": "twenty-app-intake",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "The missing ingestion layer for Twenty CRM. Automatically sync any webhook source — contact forms, pipeline apps, or any platform — with native schema extension, field normalization, and deduplication. Zero manual configuration required.",
   "keywords": [
     "twenty-app",
@@ -25,8 +25,9 @@
     "url": "https://github.com/FranciscoContreras/twenty-app-intake.git"
   },
   "engines": {
-    "node": ">=24.0.0",
-    "twenty": ">=2.5.0"
+    "node": "^24.5.0",
+    "yarn": ">=4.0.2",
+    "twenty": ">=2.26.0"
   },
   "scripts": {
     "twenty": "twenty",
@@ -38,12 +39,6 @@
     "build": "twenty build",
     "publish:app": "twenty build && cp README.md LICENSE .twenty/output/ && npm publish .twenty/output"
   },
-  "dependencies": {
-    "cockatiel": "^3.2.1",
-    "neverthrow": "^8.0.0",
-    "twenty-client-sdk": "^2.5.1",
-    "twenty-sdk": "^2.5.1"
-  },
   "devDependencies": {
     "@changesets/cli": "^2.27.0",
     "@types/react": "^19.2.15",
@@ -53,6 +48,8 @@
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "tsup": "^8.0.0",
+    "twenty-client-sdk": "2.29.0",
+    "twenty-sdk": "2.29.0",
     "typescript": "~5.8.3",
     "vite": "^8.0.13",
     "vite-tsconfig-paths": "^5.1.4",

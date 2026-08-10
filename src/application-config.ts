@@ -1,5 +1,4 @@
 import { defineApplication } from 'twenty-sdk/define';
-import defaultRole from './default-role';
 import { IDS } from './constants/universal-identifiers';
 import postInstall from './post-install';
 
@@ -11,11 +10,11 @@ export default defineApplication({
   displayName: 'Intake',
   description:
     'The missing ingestion layer for Twenty CRM. Wire any contact form, pipeline app, or webhook source to Twenty — fields normalize automatically, schema extends on the fly, duplicates never land twice.',
-  category: 'data',
-  logoUrl: 'https://raw.githubusercontent.com/FranciscoContreras/twenty-app-intake/main/public/logo.svg',
+  category: 'Data',
+  logo: 'public/logo.svg',
   websiteUrl: 'https://github.com/FranciscoContreras/twenty-app-intake',
-  defaultRoleUniversalIdentifier: defaultRole.universalIdentifier,
-  settingsCustomTabFrontComponentUniversalIdentifier: '4e4cfb3b-508c-413b-a1b2-192a51c31ed4',
+  author: 'Machina (https://wearemachina.com)',
+  issueReportUrl: 'https://github.com/FranciscoContreras/twenty-app-intake/issues',
   postInstallLogicFunction: {
     universalIdentifier: postInstall.universalIdentifier,
     shouldRunSynchronously: true,

@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.3.0] - 2026-08-09
+
+### Fixed
+- **Install now succeeds on modern Twenty servers** — 0.2.1 was built with `twenty-sdk@2.5.1`, whose build embedded server-owned system fields (`id`, `createdAt`, `updatedAt`, `deletedAt`, `createdBy`, `updatedBy`, `position`, `searchVector`) and standard-object morph relations (`noteTargets`, `taskTargets`, `timelineActivities`, `attachments`) into every custom object in `manifest.json`. Twenty >= 2.20 rejects those during metadata sync with `METADATA_VALIDATION_FAILED`. Rebuilding against `twenty-sdk@2.29.0` drops them — the three custom objects now declare only their own application fields (68 emitted fields down to 32).
+- **Settings tab appears again** — migrated from the deprecated `settingsCustomTabFrontComponentUniversalIdentifier` pointer on `defineApplication`, which modern servers ignore entirely, to `defineSettingsFrontComponent()` in `src/front-components/settings-panel.tsx`. The build now emits `settingsFrontComponent` in the manifest. The component's universal identifier is unchanged.
+
+### Changed
+- **Logo now ships with the app** — replaced the external `logoUrl` (a raw.githubusercontent.com link, stripped from the manifest by the current SDK) with the bundled `logo: 'public/logo.svg'`.
+- **Application category** — `data` → `Data`, matching the SDK's `APPLICATION_CATEGORIES` list.
+- **Default role** — dropped the deprecated `defaultRoleUniversalIdentifier` from `defineApplication`; the role is picked up from the existing `defineApplicationRole()` export in `src/default-role.ts`.
+- **Manifest metadata** — added `author` and `issueReportUrl` for the marketplace listing.
+- **Engine requirements** — `node: ^24.5.0`, `yarn: >=4.0.2`, `twenty: >=2.26.0` (the last becomes the manifest's `requiredServerVersionRange`).
+- **Dependencies** — `twenty-sdk` and `twenty-client-sdk` moved to `devDependencies` and pinned to `2.29.0`; they are build-time tooling, not runtime deps.
+
+### Removed
+- **Unused `neverthrow` and `cockatiel` dependencies** — never imported anywhere in `src/`; error handling uses the hand-rolled `Result` type in `src/lib/result.ts`.
+
 ## [0.2.1] - 2026-06-12
 
 ### Fixed

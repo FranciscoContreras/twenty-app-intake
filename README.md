@@ -5,7 +5,7 @@
   Wire any form, webhook, or data source to Twenty. Leads land clean — every time.</p>
 
   [![npm version](https://img.shields.io/npm/v/twenty-app-intake?color=0F172A&labelColor=334155&label=npm)](https://www.npmjs.com/package/twenty-app-intake)
-  [![Twenty](https://img.shields.io/badge/Twenty-%3E%3D2.5.0-0F172A?labelColor=334155)](https://twenty.com)
+  [![Twenty](https://img.shields.io/badge/Twenty-%3E%3D2.26.0-0F172A?labelColor=334155)](https://twenty.com)
   [![Tests](https://img.shields.io/badge/tests-68%20passing-22c55e?labelColor=334155)](https://github.com/FranciscoContreras/twenty-app-intake/actions)
   [![License](https://img.shields.io/badge/license-MIT-0F172A?labelColor=334155)](./LICENSE)
   [![Website](https://img.shields.io/badge/website-wearemachina.com-0F172A?labelColor=334155)](https://wearemachina.com)

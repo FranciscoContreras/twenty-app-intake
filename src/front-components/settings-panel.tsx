@@ -1,4 +1,4 @@
-import { defineFrontComponent } from 'twenty-sdk/define';
+import { defineSettingsFrontComponent } from 'twenty-sdk/define';
 import React, { useEffect, useRef, useState } from 'react';
 
 const SETTINGS = [
@@ -247,7 +247,7 @@ const SettingsPanel: React.FC = () => {
   );
 };
 
-export default defineFrontComponent({
+export default defineSettingsFrontComponent({
   universalIdentifier: '4e4cfb3b-508c-413b-a1b2-192a51c31ed4',
   name: 'intake-settings-panel',
   description: 'Custom settings panel with inline documentation for all Intake configuration variables.',
