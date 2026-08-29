@@ -5,6 +5,20 @@ import { ok, err, ErrorCode } from '../result';
 import { assembleComposites } from '../normalizer';
 import { formatNote } from '../note-formatter';
 import { coreApi, gql } from '../rest-client';
+import { mergePatch, type FieldMergeStrategy } from '../merge';
+import { mergePolicy as workspaceMergePolicy, appLabel, defaultOpportunityStage } from '../settings';
+import { findPersonByEmail, findCompanyByDomain, type ExistingRecord } from '../lookup';
+
+/**
+ * Updates an existing record under the merge policy. Passed down rather than
+ * reconstructed per method so one run resolves the policy exactly once.
+ */
+type PatchExisting = (
+  collection: string,
+  object: string,
+  existing: ExistingRecord,
+  incoming: Record<string, unknown>,
+) => Promise<void>;
 
 /** Fields each object accepts directly, so they are never PATCHed as custom fields. */
 const STANDARD_BY_OBJECT: Record<'person' | 'company' | 'opportunity', Set<string>> = {
@@ -46,6 +60,48 @@ export class UpsertRecordStage implements PipelineStage {
       return out;
     };
 
+    // A source may override the workspace default; a rule may override both for
+    // one field. Resolved once here so every write in this run agrees.
+    const policy = ctx.source?.mergePolicy ?? workspaceMergePolicy();
+    const strategyByField = new Map<string, FieldMergeStrategy>();
+    for (const f of (ctx.crmFields ?? [])) {
+      if (f.mergeStrategy && f.mergeStrategy !== 'INHERIT') {
+        strategyByField.set(f.canonicalName, f.mergeStrategy);
+      }
+    }
+    const strategyFor = (field: string): FieldMergeStrategy =>
+      strategyByField.get(field) ?? 'INHERIT';
+
+    /**
+     * Update an existing record under the merge policy.
+     *
+     * Everything the payload wants to write is compared against what is already
+     * there, and only the keys the policy actually approves are sent. Sending a
+     * PATCH with nothing in it would be a wasted call, so an update where the
+     * policy preserved every field makes no request at all.
+     */
+    const patchExisting = async (
+      collection: string,
+      object: string,
+      existing: ExistingRecord,
+      incoming: Record<string, unknown>,
+    ): Promise<void> => {
+      const { patch, decisions } = mergePatch(existing, incoming, policy, strategyFor);
+      ctx.mergeDecisions = { ...(ctx.mergeDecisions ?? {}), [object]: decisions };
+
+      const preserved = Object.entries(decisions)
+        .filter(([, d]) => d.status === 'preserved' && d.write === false)
+        .map(([field]) => field);
+      if (preserved.length > 0 && policy === 'PRESERVE') {
+        ctx.warnings.push(
+          `Kept the existing ${object} values for ${preserved.join(', ')} — INTAKE_MERGE_POLICY is PRESERVE`,
+        );
+      }
+
+      if (Object.keys(patch).length === 0) return;
+      await coreApi.patch(`/${collection}/${existing.id}`, patch);
+    };
+
     try {
       let companyId: string | undefined;
       let personId: string | undefined;
@@ -53,14 +109,14 @@ export class UpsertRecordStage implements PipelineStage {
       // ── 1. Upsert Company ──────────────────────────────────────────────
       const needsCompany = rawCompanyName || ctx.source?.targetObject === 'COMPANY';
       if (needsCompany) {
-        companyId = await this.upsertCompany(assembled, structuredCompany ?? {}, rawCompanyName, customFor('company'), ctx);
+        companyId = await this.upsertCompany(assembled, structuredCompany ?? {}, rawCompanyName, customFor('company'), ctx, patchExisting);
       }
 
       // ── 2. Upsert Person ──────────────────────────────────────────────
       const personData = structuredPerson ?? assembled;
       const hasPersonData = personData['emails'] || personData['name'] || assembled['emails'] || assembled['name'];
       if (hasPersonData || ctx.source?.targetObject === 'PERSON') {
-        personId = await this.upsertPerson(assembled, structuredPerson, companyId, customFor('person'), ctx);
+        personId = await this.upsertPerson(assembled, structuredPerson, companyId, customFor('person'), ctx, patchExisting);
       }
 
       // ── 3. Create Opportunity ─────────────────────────────────────────
@@ -97,6 +153,7 @@ export class UpsertRecordStage implements PipelineStage {
     companyName: string | undefined,
     customData: Record<string, unknown>,
     ctx: PipelineContext,
+    patchExisting: PatchExisting,
   ): Promise<string> {
     // Standard fields only for the initial create/update
     const standard: Record<string, unknown> = { ...structuredCompany };
@@ -108,17 +165,14 @@ export class UpsertRecordStage implements PipelineStage {
     const domain = (standard['domainName'] as Record<string, unknown> | undefined)?.['primaryLinkUrl'] as string | undefined;
     let companyId: string | undefined;
     if (domain) {
-      const host = extractHost(domain);
-      try {
-        const found = await coreApi.get<{ data: { companies: { edges: Array<{ node: { id: string } }> } } }>(
-          `/companies?filter=domainName.primaryLinkUrl[like]:%25${encodeURIComponent(host)}%25&first=1`,
-        );
-        const existing = found.data?.companies?.edges?.[0]?.node;
-        if (existing) {
-          await coreApi.patch(`/companies/${existing.id}`, standard);
-          companyId = existing.id;
-        }
-      } catch { /* proceed to create */ }
+      const existing = await findCompanyByDomain(domain);
+      if (existing) {
+        // Standard and custom fields go through the policy together: an update
+        // is one decision about one record, and splitting it would let a custom
+        // field overwrite while the name beside it was preserved.
+        await patchExisting('companies', 'company', existing, { ...standard, ...customData });
+        return existing.id;
+      }
     }
 
     if (!companyId) {
@@ -156,6 +210,7 @@ export class UpsertRecordStage implements PipelineStage {
     companyId: string | undefined,
     customData: Record<string, unknown>,
     ctx: PipelineContext,
+    patchExisting: PatchExisting,
   ): Promise<string> {
     // Standard fields only for initial create/update
     const standard: Record<string, unknown> = structuredPerson ? { ...structuredPerson } : {};
@@ -169,16 +224,11 @@ export class UpsertRecordStage implements PipelineStage {
     const email = emails?.['primaryEmail'];
     let personId: string | undefined;
     if (email) {
-      try {
-        const found = await coreApi.get<{ data: { people: { edges: Array<{ node: { id: string } }> } } }>(
-          `/people?filter=emails.primaryEmail[eq]:${encodeURIComponent(email)}&first=1`,
-        );
-        const existing = found.data?.people?.edges?.[0]?.node;
-        if (existing) {
-          await coreApi.patch(`/people/${existing.id}`, standard);
-          personId = existing.id;
-        }
-      } catch { /* proceed to create */ }
+      const existing = await findPersonByEmail(email);
+      if (existing) {
+        await patchExisting('people', 'person', existing, { ...standard, ...customData });
+        return existing.id;
+      }
     }
 
     if (!personId) {
@@ -207,7 +257,7 @@ export class UpsertRecordStage implements PipelineStage {
     let opportunityId: string | undefined;
     try {
       const name = buildOpportunityName(ctx, assembled);
-      const stage = process.env['INTAKE_DEFAULT_OPP_STAGE'] ?? 'NEW';
+      const stage = defaultOpportunityStage();
       const data: Record<string, unknown> = { name, stage };
       if (personId) data['pointOfContactId'] = personId;
       if (companyId) data['companyId'] = companyId;
@@ -247,9 +297,9 @@ export class UpsertRecordStage implements PipelineStage {
   ): Promise<string | undefined> {
     try {
       const markdown = formatNote(ctx.source?.name ?? ctx.sourceSlug, overflow);
-      const appLabel = process.env['INTAKE_APP_LABEL'] ?? 'Intake';
+      const label = appLabel();
       const created = await coreApi.post<{ data: { createNote: { id: string } } }>('/notes', {
-        title: `${ctx.source?.name ?? appLabel} — Lead`,
+        title: `${ctx.source?.name ?? label} — Lead`,
         bodyV2: { markdown },
       });
       const noteId = created.data.createNote.id;
@@ -269,22 +319,17 @@ export class UpsertRecordStage implements PipelineStage {
 }
 
 function buildOpportunityName(ctx: PipelineContext, assembled: Record<string, unknown>): string {
-  const appLabel = process.env['INTAKE_APP_LABEL'] ?? 'Intake';
+  const label = appLabel();
   const defaultTemplate = `{{source}} — {{firstName}} {{lastName}}`;
   const template = ctx.source?.opportunityNameTemplate ?? defaultTemplate;
   const name = assembled['name'] as Record<string, string> | undefined;
   return template
-    .replace('{{source}}', ctx.source?.name ?? appLabel)
+    .replace('{{source}}', ctx.source?.name ?? label)
     .replace('{{firstName}}', name?.['firstName'] ?? '')
     .replace('{{lastName}}', name?.['lastName'] ?? '')
     .replace('{{email}}', (assembled['emails'] as Record<string, string> | undefined)?.['primaryEmail'] ?? '')
     .replace('{{company}}', assembled['companyName'] as string ?? '')
     .trim().replace(/\s+/g, ' ').replace(/\s*—\s*$/, '');
-}
-
-function extractHost(url: string): string {
-  try { return new URL(url).hostname.replace(/^www\./, ''); }
-  catch { return url; }
 }
 
 /** Format a custom field value to match Twenty's expected composite types. */

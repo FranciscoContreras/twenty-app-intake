@@ -11,6 +11,10 @@ export const ErrorCode = {
   SOURCE_NOT_FOUND: 'SOURCE_NOT_FOUND',
   SOURCE_PAUSED: 'SOURCE_PAUSED',
   DUPLICATE_PAYLOAD: 'DUPLICATE_PAYLOAD',
+  /** Held by the spam filter — recorded, not written, and releasable. */
+  QUARANTINED: 'QUARANTINED',
+  /** Retention is off or the payload was too large, so there is nothing to replay. */
+  NO_STORED_PAYLOAD: 'NO_STORED_PAYLOAD',
   FIELD_CREATE_FAILED: 'FIELD_CREATE_FAILED',
   RECORD_UPSERT_FAILED: 'RECORD_UPSERT_FAILED',
   NOTE_CREATE_FAILED: 'NOTE_CREATE_FAILED',

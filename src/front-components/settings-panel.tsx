@@ -44,6 +44,55 @@ const SETTINGS = [
     description:
       'When true, every Intake Source must have a webhook secret and all requests must be signed with HMAC-SHA256. Unsigned or incorrectly signed requests are rejected with 401 regardless of source config.',
   },
+  {
+    key: 'INTAKE_MERGE_POLICY',
+    label: 'Merge Policy',
+    defaultValue: 'PRESERVE',
+    description:
+      'What an update does to a field that already holds a value. PRESERVE fills blanks and leaves everything else alone, so a returning enquiry cannot overwrite a name someone corrected by hand. NEWEST_WINS lets the payload overwrite, which is how versions before 0.4.0 behaved. Under either setting, a blank value never overwrites.',
+  },
+  {
+    key: 'INTAKE_SPAM_FILTER_ENABLED',
+    label: 'Spam Filtering',
+    defaultValue: 'false',
+    description:
+      'Score inbound payloads and hold anything at or above the threshold for review, before any record is created. Off by default. Watch the Spam Score on a few days of logs before switching it on. Honeypot fields work whether or not this is enabled.',
+  },
+  {
+    key: 'INTAKE_SPAM_SCORE_THRESHOLD',
+    label: 'Spam Score Threshold',
+    defaultValue: '5',
+    description:
+      'The score at which a payload is quarantined. Individual signals are worth 2 to 4 points each, so the default requires two or more to agree. Lower is stricter.',
+  },
+  {
+    key: 'INTAKE_HONEYPOT_FIELD',
+    label: 'Honeypot Field',
+    defaultValue: '',
+    description:
+      'Name of a form field hidden from people by CSS. Any payload arriving with it filled was filled by a script, and is quarantined immediately. Leave empty to disable. An individual source can override this.',
+  },
+  {
+    key: 'INTAKE_RAW_PAYLOAD_RETENTION',
+    label: 'Raw Payload Retention',
+    defaultValue: 'FULL',
+    description:
+      'FULL keeps each payload on its log, which is what retry and replay run from. NONE keeps nothing and disables both. Passwords, tokens and card numbers are stripped before storage under either setting; everything else the sender submitted is kept as sent.',
+  },
+  {
+    key: 'INTAKE_RAW_PAYLOAD_MAX_BYTES',
+    label: 'Max Stored Payload (bytes)',
+    defaultValue: '65000',
+    description:
+      'Largest payload kept for replay. Anything larger is still ingested normally, but not stored, and its log records that replay is unavailable.',
+  },
+  {
+    key: 'INTAKE_REPLAY_MAX_BATCH',
+    label: 'Max Replay Batch',
+    defaultValue: '50',
+    description:
+      'How many logs one bulk replay may process. Every replayed log writes to the CRM, so this caps how much a single call can change. The hard ceiling is 500.',
+  },
 ] as const;
 
 type SettingKey = (typeof SETTINGS)[number]['key'];

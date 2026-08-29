@@ -61,6 +61,20 @@ export default defineObject({
       defaultValue: "'TEXT'",
     },
     {
+      universalIdentifier: IDS.INTAKE_FIELD_RULE_MERGE_STRATEGY,
+      name: 'mergeStrategy',
+      type: FieldType.SELECT,
+      label: 'Merge Strategy',
+      description: 'What happens when this field already has a value on an existing record. Inherit follows the source or workspace policy. Newest wins suits volatile attributes such as a lead score; preserve suits anything a person may have corrected by hand.',
+      icon: 'IconGitMerge',
+      options: [
+        { value: 'INHERIT', label: 'Inherit', position: 0, color: 'gray' },
+        { value: 'PRESERVE', label: 'Preserve existing', position: 1, color: 'green' },
+        { value: 'NEWEST_WINS', label: 'Newest wins', position: 2, color: 'orange' },
+      ],
+      defaultValue: "'INHERIT'",
+    },
+    {
       universalIdentifier: IDS.INTAKE_FIELD_RULE_PRIORITY,
       name: 'priority',
       type: FieldType.NUMBER,

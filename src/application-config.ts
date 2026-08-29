@@ -50,5 +50,40 @@ export default defineApplication({
       value: 'Intake',
       description: 'Display name used in generated content — note titles, opportunity names, and system messages. Change to match your team\'s terminology (e.g. "Leads", "Inbound", "Pipeline").',
     },
+    INTAKE_MERGE_POLICY: {
+      universalIdentifier: IDS.VAR_MERGE_POLICY,
+      value: 'PRESERVE',
+      description: 'What an update does to a field that already holds a value. PRESERVE fills blanks and leaves everything else alone. NEWEST_WINS lets the incoming payload overwrite, which is how versions before 0.4.0 behaved. A blank value in a payload never overwrites under either setting.',
+    },
+    INTAKE_SPAM_FILTER_ENABLED: {
+      universalIdentifier: IDS.VAR_SPAM_FILTER_ENABLED,
+      value: 'false',
+      description: 'Score inbound payloads and quarantine anything at or above the threshold. Off by default — turn it on after checking a few days of scores in the Intake Logs. Honeypot fields work whether or not this is on.',
+    },
+    INTAKE_SPAM_SCORE_THRESHOLD: {
+      universalIdentifier: IDS.VAR_SPAM_SCORE_THRESHOLD,
+      value: '5',
+      description: 'Score at which a payload is held for review. Individual signals are worth 2 to 4 points, so the default needs two or more of them to agree before anything is withheld. Lower is stricter.',
+    },
+    INTAKE_HONEYPOT_FIELD: {
+      universalIdentifier: IDS.VAR_HONEYPOT_FIELD,
+      value: '',
+      description: 'Name of a form field that is hidden from people. Any payload that arrives with it filled is quarantined. Empty disables it. A per-source Honeypot Field overrides this.',
+    },
+    INTAKE_RAW_PAYLOAD_RETENTION: {
+      universalIdentifier: IDS.VAR_RAW_PAYLOAD_RETENTION,
+      value: 'FULL',
+      description: 'FULL stores each payload on its log, which is what makes retry and replay possible. NONE stores nothing and switches both off. Credentials (password, token, secret, card and similar keys) are stripped before storage either way.',
+    },
+    INTAKE_RAW_PAYLOAD_MAX_BYTES: {
+      universalIdentifier: IDS.VAR_RAW_PAYLOAD_MAX_BYTES,
+      value: '65000',
+      description: 'Largest payload stored for replay. Anything bigger is processed normally but not kept, and the log says so — a truncated payload would not parse, so it is dropped rather than half-stored.',
+    },
+    INTAKE_REPLAY_MAX_BATCH: {
+      universalIdentifier: IDS.VAR_REPLAY_MAX_BATCH,
+      value: '50',
+      description: 'Most logs one bulk replay will process. Each replayed log writes to the CRM, so this bounds how much a single call can change. Hard ceiling of 500.',
+    },
   },
 });

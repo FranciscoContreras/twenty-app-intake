@@ -1,6 +1,7 @@
 import { FIELD_MAP, normaliseKey, type FieldAction, type TwentyFieldType } from '../constants/field-map';
 import { detectType } from './type-detector';
 import { classify } from './classifier';
+import { parseFieldMergeStrategy, type FieldMergeStrategy } from './merge';
 
 /**
  * Which record a field is written to.
@@ -29,16 +30,45 @@ export type NormalizedField = {
    * Anything else is demoted to the note rather than silently dropped.
    */
   writable?: boolean;
+  /** Per-field override of the workspace merge policy, from the matching rule. */
+  mergeStrategy?: FieldMergeStrategy;
 };
 
 export type DatabaseRule = {
   inputPattern: string;
   canonicalName: string;
   fieldType: string;
-  action: FieldAction;
+  action?: FieldAction;
   priority: number;
   targetObject?: string | null;
+  mergeStrategy?: string | null;
 };
+
+/**
+ * A rule states its intent through `fieldType`: the list offers NOTE and SKIP
+ * alongside the real Twenty types. There is no separate action column to read,
+ * and reading one that does not exist is how a SKIP rule ended up writing the
+ * value it was configured to discard — `action` came back undefined, and
+ * `partition` treats anything that is not 'skip' or 'note' as a field to write.
+ */
+export function actionForRule(rule: DatabaseRule): FieldAction {
+  if (rule.action) return rule.action;
+  switch ((rule.fieldType ?? '').toUpperCase()) {
+    case 'SKIP': return 'skip';
+    case 'NOTE': return 'note';
+    default: return 'field';
+  }
+}
+
+/** NOTE and SKIP are instructions, not column types — give them a real one. */
+export function typeForRule(rule: DatabaseRule): TwentyFieldType {
+  switch ((rule.fieldType ?? '').toUpperCase()) {
+    case 'NOTE': return 'RICH_TEXT';
+    case 'SKIP': return 'TEXT';
+    case '': return 'TEXT';
+    default: return rule.fieldType as TwentyFieldType;
+  }
+}
 
 /**
  * Explicit per-key routing to the deal. `opportunity_budget`, `opp_budget` and
@@ -113,11 +143,12 @@ function normalizeField(
       return {
         originalKey: key,
         canonicalName: rule.canonicalName,
-        twentyType: rule.fieldType as TwentyFieldType,
-        action: rule.action,
+        twentyType: typeForRule(rule),
+        action: actionForRule(rule),
         value,
         source: 'rule',
         targetObject: parseTargetObject(rule.targetObject),
+        mergeStrategy: parseFieldMergeStrategy(rule.mergeStrategy),
       };
     }
   }

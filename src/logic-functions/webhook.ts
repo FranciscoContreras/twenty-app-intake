@@ -1,9 +1,6 @@
 import { defineLogicFunction, type RoutePayload } from 'twenty-sdk/define';
-import { CoreApiClient } from 'twenty-client-sdk/core';
-import { MetadataApiClient } from 'twenty-client-sdk/metadata';
 import { IDS } from '../constants/universal-identifiers';
-import { createPipeline } from '../lib/pipeline-factory';
-import type { PipelineContext } from '../lib/pipeline';
+import { runIngestion, statusCodeFor, idempotencyKeyFrom, successBody } from '../lib/ingest';
 
 const handler = async (params: RoutePayload) => {
   const startedAt = Date.now();
@@ -18,54 +15,32 @@ const handler = async (params: RoutePayload) => {
     rawPayload = params.body as Record<string, unknown>;
   }
 
-  const coreClient = new CoreApiClient();
-  const metadataClient = new MetadataApiClient();
-  const pipeline = createPipeline(coreClient, metadataClient);
+  const headers = (params.headers ?? {}) as Record<string, string | undefined>;
 
-  const ctx: PipelineContext = {
+  const outcome = await runIngestion({
     sourceSlug,
-    rawBody: params.rawBody,
     rawPayload,
-    headers: (params.headers ?? {}) as Record<string, string | undefined>,
-    startedAt,
-    fieldsCreated: 0,
-    fieldsMatched: 0,
-    warnings: [],
-    events: [],
-  };
+    rawBody: params.rawBody,
+    headers,
+    idempotencyKey: idempotencyKeyFrom(headers, rawPayload),
+  });
 
-  const result = await pipeline.run(ctx);
+  if (!outcome.ok) {
+    const { code, message, details } = outcome.error;
 
-  if (!result.ok) {
-    const { code, message } = result.error;
-    const statusCode =
-      code === 'INVALID_SIGNATURE' ? 401
-      : code === 'SOURCE_NOT_FOUND' ? 404
-      : code === 'SOURCE_PAUSED' ? 423
-      : code === 'DUPLICATE_PAYLOAD' ? 200
-      : 500;
+    // A held payload is not an error the sender can act on, and telling a bot
+    // which submissions were caught only teaches it what to change.
+    if (code === 'QUARANTINED') {
+      return { statusCode: 202, body: { success: true, status: 'held_for_review' } };
+    }
 
-    return { statusCode, body: { error: message, code } };
+    return {
+      statusCode: statusCodeFor(code),
+      body: { error: message, code, ...(details ? { details } : {}) },
+    };
   }
 
-  const { value: finalCtx } = result;
-
-  return {
-    statusCode: 200,
-    body: {
-      success: true,
-      recordId: finalCtx.personId ?? finalCtx.companyId,
-      recordType: finalCtx.recordType,
-      personId: finalCtx.personId,
-      companyId: finalCtx.companyId,
-      opportunityId: finalCtx.opportunityId,
-      fieldsCreated: finalCtx.fieldsCreated,
-      fieldsMatched: finalCtx.fieldsMatched,
-      overflowCount: finalCtx.noteFields?.length ?? 0,
-      processingMs: Date.now() - startedAt,
-      warnings: finalCtx.warnings,
-    },
-  };
+  return { statusCode: 200, body: successBody(outcome.ctx, startedAt) };
 };
 
 export default defineLogicFunction({
@@ -78,6 +53,6 @@ export default defineLogicFunction({
     path: '/intake/:slug',
     httpMethod: 'POST',
     isAuthRequired: false,
-    forwardedRequestHeaders: ['x-webhook-signature', 'x-intake-source', 'content-type'],
+    forwardedRequestHeaders: ['x-webhook-signature', 'x-intake-source', 'content-type', 'idempotency-key'],
   },
 });

@@ -1,5 +1,8 @@
 import type { Result, AppError } from './result';
 import type { NormalizedField } from './normalizer';
+import type { MergePolicy } from './settings';
+import type { SpamVerdict } from './spam';
+import type { MergeDecision } from './merge';
 
 export type PipelineContext = {
   // ── Entry ──────────────────────────────────────────────────────────────
@@ -19,10 +22,24 @@ export type PipelineContext = {
     status: 'ACTIVE' | 'PAUSED';
     createOpportunity: boolean;
     opportunityNameTemplate: string;
+    /** Per-source honeypot key. Falls back to INTAKE_HONEYPOT_FIELD. */
+    honeypotField: string | null;
+    /** Per-source merge policy. Null inherits INTAKE_MERGE_POLICY. */
+    mergePolicy: MergePolicy | null;
   };
 
   // ── Idempotency ────────────────────────────────────────────────────────
   payloadHash?: string;
+  /**
+   * Client-supplied key from the Idempotency-Key header or an `idempotencyKey`
+   * body field. Unlike the content hash it is honoured with no time limit —
+   * the caller has promised these are the same submission, so a retry an hour
+   * later is still that one submission.
+   */
+  idempotencyKey?: string;
+
+  // ── Spam ───────────────────────────────────────────────────────────────
+  spam?: SpamVerdict;
 
   // ── Transformation ─────────────────────────────────────────────────────
   flat?: Record<string, unknown>;
@@ -45,8 +62,17 @@ export type PipelineContext = {
 
   // ── Flags ──────────────────────────────────────────────────────────────
   skipDedup?: boolean;
+  /**
+   * Set when an operator releases a quarantined payload. The scoring still runs
+   * and is still recorded, but a human has overruled it.
+   */
+  skipSpamFilter?: boolean;
+  /** The log this run was replayed from, for lineage on the new log. */
+  replayOfLogId?: string;
 
   // ── Diagnostics ────────────────────────────────────────────────────────
+  /** What the merge policy did to each field, keyed by object then field. */
+  mergeDecisions?: Record<string, Record<string, MergeDecision>>;
   warnings: string[];
   events: PipelineEvent[];
 };

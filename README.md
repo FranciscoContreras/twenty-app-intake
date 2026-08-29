@@ -113,7 +113,33 @@ curl -X POST https://your-crm.com/s/intake/contact-form/test \
   -d '{"first_name":"Jane","email":"jane@co.com","budget":"15000"}'
 ```
 
-Returns exactly what *would* be created — standard fields, custom fields to create, note preview — without touching the CRM.
+Returns a structured diff of what *would* happen, without touching the CRM: per object
+whether it would be **created or updated**, which existing record it matched and on
+what, what each field would do to the value already there, and which fields do not
+exist yet and would be added to the schema. Plus the spam score the payload would get.
+
+```jsonc
+{
+  "dryRun": true,
+  "diff": {
+    "objects": [{
+      "object": "person",
+      "operation": "update",
+      "recordId": "8f21…",
+      "matchedBy": { "field": "emails.primaryEmail", "value": "jane@co.com" },
+      "fields": [
+        { "name": "name", "status": "preserved", "existing": {…}, "incoming": {…} },
+        { "name": "phones", "status": "fill-empty", "incoming": {…} },
+        { "name": "extBudget", "status": "create", "fieldWouldBeCreated": true }
+      ],
+      "fieldsToCreate": [{ "name": "extBudget", "type": "NUMBER" }]
+    }]
+  }
+}
+```
+
+Because it is machine-readable, this is the gate to put in front of live traffic —
+assert on it in a deployment check rather than reading it by eye.
 
 ---
 
@@ -191,6 +217,7 @@ Add `IntakeFieldRule` records to extend or override the built-in map for a speci
 | `canonicalName` | Target field in Twenty. An `ext`-prefixed name (`extBudget`) is created automatically; any other name must already exist on the target object |
 | `fieldType` | `TEXT`, `NUMBER`, `LINKS`, `EMAILS`, `PHONES`, `BOOLEAN`, `DATE_TIME`, `CURRENCY`, `NOTE`, or `SKIP` |
 | `targetObject` | `AUTO` (default), `PERSON`, `COMPANY`, or `OPPORTUNITY` |
+| `mergeStrategy` | `INHERIT` (default), `PRESERVE`, or `NEWEST_WINS` — see [Updating existing records](#updating-existing-records) |
 | `priority` | Higher = checked first (0–100) |
 
 Rules with no source linked apply globally across all sources.
@@ -244,6 +271,10 @@ Each `IntakeSource` record controls:
 | `createOpportunity` | `true` | Auto-create Opportunity per ingestion |
 | `opportunityNameTemplate` | `{{source}} — {{firstName}} {{lastName}}` | Supports `{{source}}`, `{{firstName}}`, `{{lastName}}`, `{{email}}`, `{{company}}` |
 | `status` | `ACTIVE` | Pause a source without deleting it |
+| `mergePolicy` | — | Overrides `INTAKE_MERGE_POLICY` for this source |
+| `honeypotField` | — | Overrides `INTAKE_HONEYPOT_FIELD` for this source |
+| `expectedCadenceHours` | — | How long this source may go quiet before it counts as silent |
+| `alertWebhookUrl` | — | Posted to once when this source falls silent |
 
 ---
 
@@ -259,6 +290,206 @@ Configurable from **Settings → Applications → Intake → Custom**:
 | `INTAKE_MAX_EXT_FIELDS` | `50` | Cap on custom fields per object |
 | `INTAKE_DEDUP_WINDOW_MINUTES` | `5` | Duplicate suppression window |
 | `INTAKE_REQUIRE_HMAC` | `false` | Enforce signed webhooks globally |
+| `INTAKE_MERGE_POLICY` | `PRESERVE` | What an update does to a field that already has a value |
+| `INTAKE_SPAM_FILTER_ENABLED` | `false` | Score payloads and quarantine at the threshold |
+| `INTAKE_SPAM_SCORE_THRESHOLD` | `5` | Score at which a payload is held |
+| `INTAKE_HONEYPOT_FIELD` | — | Name of a hidden form field that quarantines when filled |
+| `INTAKE_RAW_PAYLOAD_RETENTION` | `FULL` | `FULL` keeps payloads for replay; `NONE` keeps none |
+| `INTAKE_RAW_PAYLOAD_MAX_BYTES` | `65000` | Largest payload stored for replay |
+| `INTAKE_REPLAY_MAX_BATCH` | `50` | Cap on one bulk replay (hard ceiling 500) |
+
+---
+
+## Updating existing records
+
+When a payload matches a contact or company that already exists, `INTAKE_MERGE_POLICY`
+decides what happens to fields that already hold a value.
+
+| Policy | Behaviour |
+|---|---|
+| `PRESERVE` *(default)* | Fills fields that are empty, leaves everything else as it is |
+| `NEWEST_WINS` | The incoming payload overwrites — how versions before 0.4.0 behaved |
+
+Under both policies a **blank incoming value never overwrites anything**. An absent
+field means the sender had nothing to say about it, not that it should be cleared.
+
+`PRESERVE` is the default because the alternative loses data with no record of what
+was there. A returning enquiry typed in lowercase should not replace a name a
+salesperson corrected by hand, and nothing in a CRM undoes a field a webhook
+overwrote at 3am.
+
+Override it per source with the source's `mergePolicy`, or per field with a rule's
+`mergeStrategy` — useful for genuinely volatile attributes:
+
+| inputPattern | canonicalName | mergeStrategy |
+|---|---|---|
+| `lead_score` | `extLeadScore` | `NEWEST_WINS` |
+
+The response body reports what the policy did, per object and per field, under
+`mergeDecisions`.
+
+**Upgrading from 0.3.0 and want the old behaviour?** Set `INTAKE_MERGE_POLICY=NEWEST_WINS`.
+
+> **If a source exists to refresh data, `PRESERVE` will stop it refreshing.**
+> A pipeline that re-scans a business every week and sends back an updated rating,
+> review count or score writes those values once and then never again, because
+> under `PRESERVE` the field already holds a value. This is the one case where the
+> new default is the wrong one. Fix it at whichever scope fits:
+>
+> - the whole source is a refresher → set its `mergePolicy` to `NEWEST_WINS`
+> - only some fields change → give those rules `mergeStrategy: NEWEST_WINS`
+> - every source is a refresher → set `INTAKE_MERGE_POLICY=NEWEST_WINS`
+>
+> Check `mergeDecisions` in the response, or the `Kept the existing …` warnings on
+> the log, to see whether this is happening to you.
+
+---
+
+## Not sending the same lead twice
+
+Send an `Idempotency-Key` header (or an `idempotencyKey` field in the body) and a
+repeat of that key resolves to the record made the first time, instead of creating a
+second one:
+
+```bash
+curl -X POST https://your-crm.com/s/intake/contact-form \
+  -H "Content-Type: application/json" \
+  -H "Idempotency-Key: submission-8f21c9" \
+  -d '{"email":"jane@acme.com"}'
+```
+
+Unlike the content-hash deduplication — which only looks back
+`INTAKE_DEDUP_WINDOW_MINUTES` — an idempotency key has **no time limit**. A
+double-tapped submit button, a client retrying after a timeout and a queue
+redelivering an hour later all resolve to the same record.
+
+A key whose only previous use was quarantined or discarded is treated as unused, so
+a released payload is not blocked by its own earlier attempt.
+
+---
+
+## Spam quarantine
+
+Off by default. Two mechanisms, and they work independently.
+
+**Honeypot** — set `INTAKE_HONEYPOT_FIELD` (or a source's `honeypotField`) to the
+name of a form field hidden from people by CSS. Any payload arriving with it filled
+was filled by a script, and is quarantined immediately. No false positives, so this
+works whether or not scoring is enabled.
+
+**Scoring** — set `INTAKE_SPAM_FILTER_ENABLED=true`. Each signal is worth points
+rather than a verdict: a URL in a name field, a disposable or undeliverable email
+domain, a link blast in the message, one long string pasted into every box, a
+placeholder phone number. A payload is held when the total reaches
+`INTAKE_SPAM_SCORE_THRESHOLD` (default `5`), so no single signal is enough on its own
+— a genuine lead writing from a throwaway address still gets through.
+
+Signals that would score *people* rather than behaviour are deliberately absent.
+Non-Latin characters in a name and industry words like "SEO" carry no penalty.
+
+A quarantined payload creates **no Person, Company, Opportunity or Note**. It is
+recorded as an `IntakeLog` with status `QUARANTINED`, its score and its reasons, and
+the webhook answers `202` — telling a bot which attempts were caught only teaches it
+what to change, and a real person should not see a failure on a form that in fact
+went through.
+
+```bash
+# What is being held, and why
+curl https://your-crm.com/s/intake/quarantine -H "Authorization: Bearer $KEY"
+
+# Let one through — the filter is overruled, the score is still recorded
+curl -X POST https://your-crm.com/s/intake/quarantine/$LOG_ID/release -H "Authorization: Bearer $KEY"
+
+# Mark one as junk; add {"purgePayload":true} to drop the stored body
+curl -X POST https://your-crm.com/s/intake/quarantine/$LOG_ID/discard -H "Authorization: Bearer $KEY"
+```
+
+Turn scoring on only after watching the `spamScore` on a few days of real logs.
+
+---
+
+## Replay: applying a mapping you added too late
+
+Every payload is stored on its log, so a rule written after the fact can be applied
+to everything already received.
+
+```bash
+# One log, through the rules as they are now
+curl -X POST https://your-crm.com/s/intake/logs/$LOG_ID/replay -H "Authorization: Bearer $KEY"
+
+# A batch — see what would be touched first
+curl -X POST https://your-crm.com/s/intake/replay \
+  -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+  -d '{"sourceSlug":"contact-form","since":"2026-08-01T00:00:00Z","dryRun":true}'
+
+# Then run it
+curl -X POST https://your-crm.com/s/intake/replay \
+  -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+  -d '{"sourceSlug":"contact-form","since":"2026-08-01T00:00:00Z","limit":50}'
+```
+
+Replay accepts logs that already **succeeded** — that is the point, since the
+ingestion worked and only the mapping was missing. Retry is the narrower operation
+and still refuses a successful log.
+
+Replays run one at a time and are capped by `INTAKE_REPLAY_MAX_BATCH`, because each
+one writes to the CRM. Each new log records `replayOfLogId`, so a re-mapped record
+traces back to the payload it came from.
+
+### What is stored, and what is not
+
+`INTAKE_RAW_PAYLOAD_RETENTION=FULL` (the default) keeps each payload as sent, which
+is what retry and replay run from. `NONE` keeps nothing and disables both.
+
+Under either setting, **credentials are never stored** — keys containing `password`,
+`token`, `secret`, `apikey`, `authorization`, `cvv`, `card`, `ssn` and similar are
+replaced with `[redacted]` before the payload is written.
+
+Everything else the sender submitted **is** kept, including names, emails and phone
+numbers. It lives on the `IntakeLog` object under your workspace's own access
+control and is readable by anyone who can read that object. Payloads over
+`INTAKE_RAW_PAYLOAD_MAX_BYTES` are ingested normally but not stored — a truncated
+payload cannot be parsed, so it is dropped rather than half-kept, and the log says so.
+
+---
+
+## Knowing when a source goes quiet
+
+The failure nobody notices is the one that produces no error: a form that breaks in
+February and is found in August, with nothing but absent leads as evidence.
+
+Give a source an `expectedCadenceHours` and it becomes monitored. Sources without
+one are never flagged — silence is only a fault where traffic was expected.
+
+```bash
+# Evaluate every source; run this on whatever timer you already have
+curl -X POST https://your-crm.com/s/intake/sources/check-silence -H "Authorization: Bearer $KEY"
+```
+
+The check records `healthStatus` (`HEALTHY`, `SILENT`, `NEVER_RECEIVED`) and
+`silentSince` on each source, and posts once to the source's `alertWebhookUrl` on
+the transition into silence — once, not on every check. The body carries a `text`
+key, so Slack, Discord and Teams incoming webhook URLs work unchanged.
+
+`GET /s/intake/health` also reports silent sources. It still returns `200` and the
+same `status` and `timestamp` keys it always did, so existing monitors are
+unaffected. Point a monitor at `/s/intake/health?strict=true` to get a `503` when a
+source has fallen silent.
+
+---
+
+## Asking the app what it accepts
+
+```bash
+curl https://your-crm.com/s/intake/contract -H "Authorization: Bearer $KEY"
+```
+
+One call returns every endpoint, the built-in field map grouped by destination, the
+custom fields that currently exist on each object, the active rules, every
+registered source and the settings in force — so an integrator or an agent can learn
+the contract without reading source or introspecting Twenty's metadata API.
+
+Signing secrets never appear; a source reports only whether it requires a signature.
 
 ---
 
@@ -286,10 +517,27 @@ Sources without a secret accept unsigned requests — useful for internal tools.
 | Method | Path | Auth | Description |
 |---|---|---|---|
 | `POST` | `/s/intake/:slug` | HMAC or open | Ingest a payload |
-| `POST` | `/s/intake/:slug/test` | None | Dry-run — preview without writing |
-| `POST` | `/s/intake/logs/:logId/retry` | API key | Retry a failed ingestion |
-| `GET` | `/s/intake/health` | None | Health check |
+| `POST` | `/s/intake/:slug/test` | None | Dry-run — structured diff, writes nothing |
+| `GET` | `/s/intake/health` | None | Health check, plus silent sources |
+| `GET` | `/s/intake/contract` | API key | What the app accepts and how it is configured |
 | `POST` | `/s/intake/sources/register` | API key | Register a new source |
+| `POST` | `/s/intake/sources/check-silence` | API key | Check every source against its cadence |
+| `POST` | `/s/intake/logs/:logId/retry` | API key | Retry a **failed** ingestion |
+| `POST` | `/s/intake/logs/:logId/replay` | API key | Re-run **any** stored payload through current rules |
+| `POST` | `/s/intake/replay` | API key | Bulk replay a selection of logs |
+| `GET` | `/s/intake/quarantine` | API key | List held payloads and why |
+| `POST` | `/s/intake/quarantine/:logId/release` | API key | Ingest a held payload |
+| `POST` | `/s/intake/quarantine/:logId/discard` | API key | Mark a held payload as junk |
+
+### Response codes
+
+| Code | Meaning |
+|---|---|
+| `200` | Ingested, or a duplicate resolved to the original record |
+| `202` | Held for review by the spam filter — nothing was created |
+| `401` | Signature missing or invalid |
+| `404` | No source with that slug |
+| `423` | Source is paused |
 
 ---
 

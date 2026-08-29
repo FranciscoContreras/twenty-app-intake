@@ -44,6 +44,40 @@ export class NormalizeStage implements PipelineStage {
               canonicalName: true,
               fieldType: true,
               priority: true,
+              targetObject: true,
+              mergeStrategy: true,
+            },
+          },
+        },
+      });
+
+      return (result.intakeFieldRules?.edges ?? []).map((e: { node: DatabaseRule }) => e.node);
+    } catch {
+      // Selecting a field the workspace has not synced yet fails the whole
+      // query, which would silently drop every rule. Ask again for the columns
+      // that have existed since 0.1.0 so a workspace mid-upgrade keeps working.
+      return this.loadRulesLegacy(sourceId);
+    }
+  }
+
+  private async loadRulesLegacy(sourceId?: string): Promise<DatabaseRule[]> {
+    try {
+      const filter = sourceId
+        ? { or: [{ intakeSource: { id: { eq: sourceId } } }, { intakeSource: { id: { is: 'NULL' } } }] }
+        : { intakeSource: { id: { is: 'NULL' } } };
+
+      const result = await this.client.query({
+        intakeFieldRules: {
+          __args: {
+            filter: { and: [filter, { isActive: { eq: true } }] },
+            orderBy: { priority: 'DescNullsLast' },
+          },
+          edges: {
+            node: {
+              inputPattern: true,
+              canonicalName: true,
+              fieldType: true,
+              priority: true,
             },
           },
         },
