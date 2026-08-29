@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.4.0] - 2026-08-29
+
+### Fixed
+- **Custom fields now reach the Opportunity.** `createOpportunity` built a fixed payload of `name`, `stage`, `pointOfContactId` and `companyId`, and the custom-field PATCH ran against `/people/` and `/companies/` only — so a deal attribute sent to the webhook (the service asked for, a stated budget, a lead id) had nowhere to land and was silently confined to the note. Opportunity now goes through the same create-then-PATCH path as Person and Company.
+- **A rule naming a field that cannot be written no longer disappears.** `SyncSchemaStage` skipped any `canonicalName` that was neither standard nor `ext`-prefixed *and counted it as matched*, after which `UpsertRecordStage` filtered it out again by the same `ext` test — so a rule pointing at, say, `machinaService` reported success and wrote nothing. Such a field is now written when it already exists on the target object; when it does not, the value is routed to the note, a warning names the field, and it is no longer counted as matched.
+- **Built-in composite parts can no longer be mistaken for unknown fields.** The standard-field set is now derived from `FIELD_MAP` rather than restated, so pre-composite canonical names (`email`, `phone`, `addressCity`) are always recognised.
+
+### Added
+- **`targetObject` on `IntakeFieldRule`** — `AUTO` (default), `PERSON`, `COMPANY` or `OPPORTUNITY`. Routes a matched field to a specific record.
+- **Opportunity key prefixes** — `opportunity_`, `opp_` and `deal_` route a field to the deal with no rule needed; the prefix is stripped before the `ext` name is built.
+- **Standard Opportunity fields via rules** — `amount` and `closeDate` are set as the deal is created. `CURRENCY` values accept a bare number or a written figure and are converted to Twenty's micros.
+
+### Notes
+- Field placement is explicit by design: nothing is routed to the Opportunity by inference. A key is only treated as a deal attribute when a prefix or a rule says so.
+- `INTAKE_MAX_EXT_FIELDS` and `INTAKE_FIELD_CREATION_ENABLED` are honoured per object, Opportunity included.
+
 ## [0.3.0] - 2026-08-09
 
 ### Fixed

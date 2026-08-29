@@ -1,9 +1,19 @@
 import type { PipelineStage, PipelineContext } from '../pipeline';
+import type { NormalizedField } from '../normalizer';
 import type { Result } from '../result';
 import { ok, err, ErrorCode } from '../result';
 import { assembleComposites } from '../normalizer';
 import { formatNote } from '../note-formatter';
 import { coreApi, gql } from '../rest-client';
+
+/** Fields each object accepts directly, so they are never PATCHed as custom fields. */
+const STANDARD_BY_OBJECT: Record<'person' | 'company' | 'opportunity', Set<string>> = {
+  person: new Set(['name', 'emails', 'phones', 'firstName', 'lastName', 'fullName', 'email', 'phone',
+    'linkedInLink', 'xLink', 'jobTitle', 'city', 'companyName', 'domainName', 'address']),
+  company: new Set(['name', 'domainName', 'address', 'companyName', 'linkedInLink', 'xLink',
+    'employees', 'annualRecurringRevenue', 'idealCustomerProfile', 'city']),
+  opportunity: new Set(['name', 'stage', 'amount', 'closeDate']),
+};
 
 export class UpsertRecordStage implements PipelineStage {
   readonly name = 'upsert-record';
@@ -23,11 +33,18 @@ export class UpsertRecordStage implements PipelineStage {
     const rawCompanyName = (structuredCompany?.['name'] as string | undefined)
       ?? (assembled['companyName'] as string | undefined);
 
-    // Build a map of ext field canonical names → their Twenty type for value formatting
-    const extFieldTypes = new Map<string, string>();
-    for (const f of (ctx.crmFields ?? [])) {
-      if (/^ext[A-Z]/.test(f.canonicalName)) extFieldTypes.set(f.canonicalName, f.twentyType);
-    }
+    // Custom-field values, grouped by the record SyncSchemaStage resolved them
+    // onto. Only fields it marked writable appear here — anything it could not
+    // place was already moved into the note, so nothing is silently dropped.
+    const customFor = (object: 'person' | 'company' | 'opportunity'): Record<string, unknown> => {
+      const out: Record<string, unknown> = {};
+      for (const f of (ctx.crmFields ?? [])) {
+        if (f.targetObject !== object || f.writable === false || f.writable === undefined) continue;
+        if (STANDARD_BY_OBJECT[object].has(f.canonicalName)) continue;
+        out[f.canonicalName] = formatExtValue(f.value, f.twentyType);
+      }
+      return out;
+    };
 
     try {
       let companyId: string | undefined;
@@ -36,20 +53,20 @@ export class UpsertRecordStage implements PipelineStage {
       // ── 1. Upsert Company ──────────────────────────────────────────────
       const needsCompany = rawCompanyName || ctx.source?.targetObject === 'COMPANY';
       if (needsCompany) {
-        companyId = await this.upsertCompany(assembled, structuredCompany ?? {}, rawCompanyName, extFieldTypes, ctx);
+        companyId = await this.upsertCompany(assembled, structuredCompany ?? {}, rawCompanyName, customFor('company'), ctx);
       }
 
       // ── 2. Upsert Person ──────────────────────────────────────────────
       const personData = structuredPerson ?? assembled;
       const hasPersonData = personData['emails'] || personData['name'] || assembled['emails'] || assembled['name'];
       if (hasPersonData || ctx.source?.targetObject === 'PERSON') {
-        personId = await this.upsertPerson(assembled, structuredPerson, companyId, extFieldTypes, ctx);
+        personId = await this.upsertPerson(assembled, structuredPerson, companyId, customFor('person'), ctx);
       }
 
       // ── 3. Create Opportunity ─────────────────────────────────────────
       let opportunityId: string | undefined;
       if (ctx.source?.createOpportunity && (personId || companyId)) {
-        opportunityId = await this.createOpportunity(assembled, personId, companyId, ctx);
+        opportunityId = await this.createOpportunity(assembled, personId, companyId, ctx.crmFields ?? [], customFor('opportunity'), ctx);
       }
 
       // ── 4. Create Note + link targets ─────────────────────────────────
@@ -78,7 +95,7 @@ export class UpsertRecordStage implements PipelineStage {
     assembled: Record<string, unknown>,
     structuredCompany: Record<string, unknown>,
     companyName: string | undefined,
-    extFieldTypes: Map<string, string>,
+    customData: Record<string, unknown>,
     ctx: PipelineContext,
   ): Promise<string> {
     // Standard fields only for the initial create/update
@@ -123,17 +140,11 @@ export class UpsertRecordStage implements PipelineStage {
       }
     }
 
-    // Step 2: PATCH ext fields separately (non-fatal)
-    if (Object.keys(structuredCompany).length > 0) {
-      const extData: Record<string, unknown> = {};
-      for (const [k, v] of Object.entries(assembled)) {
-        if (/^ext[A-Z]/.test(k)) extData[k] = formatExtValue(v, extFieldTypes.get(k));
-      }
-      if (Object.keys(extData).length > 0) {
-        await coreApi.patch(`/companies/${companyId}`, extData).catch((e: Error) => {
-          ctx.warnings.push(`Could not set ext fields on company: ${e.message.slice(0, 120)}`);
-        });
-      }
+    // Step 2: PATCH custom fields separately (non-fatal)
+    if (Object.keys(customData).length > 0) {
+      await coreApi.patch(`/companies/${companyId}`, customData).catch((e: Error) => {
+        ctx.warnings.push(`Could not set custom fields on company: ${e.message.slice(0, 120)}`);
+      });
     }
 
     return companyId;
@@ -143,7 +154,7 @@ export class UpsertRecordStage implements PipelineStage {
     assembled: Record<string, unknown>,
     structuredPerson: Record<string, unknown> | undefined,
     companyId: string | undefined,
-    extFieldTypes: Map<string, string>,
+    customData: Record<string, unknown>,
     ctx: PipelineContext,
   ): Promise<string> {
     // Standard fields only for initial create/update
@@ -175,17 +186,11 @@ export class UpsertRecordStage implements PipelineStage {
       personId = created.data.createPerson.id;
     }
 
-    // Step 2: PATCH ext fields for flat/contact-form payloads (non-fatal)
-    if (!structuredPerson) {
-      const extData: Record<string, unknown> = {};
-      for (const [k, v] of Object.entries(assembled)) {
-        if (/^ext[A-Z]/.test(k)) extData[k] = formatExtValue(v, extFieldTypes.get(k));
-      }
-      if (Object.keys(extData).length > 0) {
-        await coreApi.patch(`/people/${personId}`, extData).catch((e: Error) => {
-          ctx.warnings.push(`Could not set ext fields on person: ${e.message.slice(0, 120)}`);
-        });
-      }
+    // Step 2: PATCH custom fields separately (non-fatal)
+    if (Object.keys(customData).length > 0) {
+      await coreApi.patch(`/people/${personId}`, customData).catch((e: Error) => {
+        ctx.warnings.push(`Could not set custom fields on person: ${e.message.slice(0, 120)}`);
+      });
     }
 
     return personId;
@@ -195,8 +200,11 @@ export class UpsertRecordStage implements PipelineStage {
     assembled: Record<string, unknown>,
     personId: string | undefined,
     companyId: string | undefined,
+    crmFields: NormalizedField[],
+    customData: Record<string, unknown>,
     ctx: PipelineContext,
   ): Promise<string | undefined> {
+    let opportunityId: string | undefined;
     try {
       const name = buildOpportunityName(ctx, assembled);
       const stage = process.env['INTAKE_DEFAULT_OPP_STAGE'] ?? 'NEW';
@@ -204,12 +212,31 @@ export class UpsertRecordStage implements PipelineStage {
       if (personId) data['pointOfContactId'] = personId;
       if (companyId) data['companyId'] = companyId;
 
+      // Standard deal fields a rule can target by name — `amount` is what makes
+      // a stated budget show up in pipeline totals rather than sitting in text.
+      for (const f of crmFields) {
+        if (f.targetObject !== 'opportunity' || !f.writable) continue;
+        if (f.canonicalName === 'amount' || f.canonicalName === 'closeDate') {
+          data[f.canonicalName] = formatExtValue(f.value, f.twentyType);
+        }
+      }
+
       const created = await coreApi.post<{ data: { createOpportunity: { id: string } } }>('/opportunities', data);
-      return created.data.createOpportunity.id;
+      opportunityId = created.data.createOpportunity.id;
     } catch {
       ctx.warnings.push('Opportunity creation failed — record was still created');
       return undefined;
     }
+
+    // Custom fields go on in a second call, the same way person and company do:
+    // a rejected custom field must not cost us the opportunity itself.
+    if (Object.keys(customData).length > 0) {
+      await coreApi.patch(`/opportunities/${opportunityId}`, customData).catch((e: Error) => {
+        ctx.warnings.push(`Could not set custom fields on opportunity: ${e.message.slice(0, 120)}`);
+      });
+    }
+
+    return opportunityId;
   }
 
   private async createNote(
@@ -264,6 +291,15 @@ function extractHost(url: string): string {
 function formatExtValue(value: unknown, type?: string): unknown {
   if (type === 'LINKS' && typeof value === 'string') {
     return { primaryLinkUrl: value, primaryLinkLabel: '' };
+  }
+  if (type === 'CURRENCY') {
+    // Twenty stores currency in micros. Accept a bare number or a written
+    // amount ("$5,000/mo") and take the first figure in it.
+    const amount = typeof value === 'number'
+      ? value
+      : Number(String(value ?? '').replace(/[^\d.]/g, ''));
+    if (!Number.isFinite(amount) || amount <= 0) return undefined;
+    return { amountMicros: Math.round(amount * 1_000_000), currencyCode: 'USD' };
   }
   return value;
 }

@@ -63,7 +63,7 @@ Any JSON payload
 ② Classify     short values → CRM fields │ prose / UTMs → note
       │
       ▼
-③ Extend       unknown fields → auto-create ext_ custom fields on Person or Company
+③ Extend       unknown fields → auto-create ext custom fields on Person, Company or Opportunity
       │
       ▼
 ④ Deduplicate  match by email (Person) or domain (Company) before creating anything
@@ -188,11 +188,48 @@ Add `IntakeFieldRule` records to extend or override the built-in map for a speci
 | Field | Description |
 |---|---|
 | `inputPattern` | Exact key name or JavaScript regex |
-| `canonicalName` | Target field in Twenty (use `ext` prefix for custom fields) |
-| `fieldType` | `TEXT`, `NUMBER`, `LINKS`, `EMAILS`, `PHONES`, `BOOLEAN`, `DATE_TIME`, `NOTE`, or `SKIP` |
+| `canonicalName` | Target field in Twenty. An `ext`-prefixed name (`extBudget`) is created automatically; any other name must already exist on the target object |
+| `fieldType` | `TEXT`, `NUMBER`, `LINKS`, `EMAILS`, `PHONES`, `BOOLEAN`, `DATE_TIME`, `CURRENCY`, `NOTE`, or `SKIP` |
+| `targetObject` | `AUTO` (default), `PERSON`, `COMPANY`, or `OPPORTUNITY` |
 | `priority` | Higher = checked first (0–100) |
 
 Rules with no source linked apply globally across all sources.
+
+### Writing to the Opportunity
+
+Deal attributes — the service someone asked for, the budget they stated, your own
+lead id — belong on the Opportunity, not the contact. Two ways to put them there:
+
+**A prefix, no configuration.** Any incoming key beginning `opportunity_`, `opp_`
+or `deal_` is routed to the deal, and the prefix is stripped before the field is
+named — `opportunity_budget` becomes `extBudget` on the Opportunity.
+
+```jsonc
+{ "email": "jane@acme.com", "opportunity_budget": "25000", "opportunity_service": "SEO" }
+```
+
+**A rule, for keys you cannot rename.** Set `targetObject: OPPORTUNITY` on the rule
+and point `canonicalName` at the field you want written:
+
+| inputPattern | canonicalName | targetObject | fieldType |
+|---|---|---|---|
+| `service` | `machinaService` | `OPPORTUNITY` | `TEXT` |
+| `budget` | `amount` | `OPPORTUNITY` | `CURRENCY` |
+
+`amount` and `closeDate` are standard Opportunity fields and are set as the deal is
+created; `amount` accepts a bare number or a written figure (`"$25,000/mo"`) and is
+converted to Twenty's currency micros. Everything else is written as a custom field
+in a follow-up call, so a rejected field never costs you the Opportunity itself.
+
+A field routed to the Opportunity by a source that does not create one falls back to
+the primary record, with a warning on the log.
+
+### Fields that cannot be written
+
+A rule pointing at a field that does not exist — and is not `ext`-prefixed, so cannot
+be auto-created — has its value routed to the note, with a warning naming the field.
+It is not counted as matched. Create the field in Twenty first, or rename the rule's
+`canonicalName` to use an `ext` prefix.
 
 ---
 

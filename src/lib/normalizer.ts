@@ -2,6 +2,18 @@ import { FIELD_MAP, normaliseKey, type FieldAction, type TwentyFieldType } from 
 import { detectType } from './type-detector';
 import { classify } from './classifier';
 
+/**
+ * Which record a field is written to.
+ *
+ * `auto` defers to the shape of the payload — the primary record, which is the
+ * person when there is person data and the company otherwise. `opportunity` is
+ * never chosen by inference: a field lands on the deal only when a rule says so
+ * or the incoming key carries an explicit opportunity prefix, because guessing
+ * that `budget` is a deal attribute rather than a contact attribute is exactly
+ * the kind of surprise that makes an ingestion layer untrustworthy.
+ */
+export type TargetObject = 'auto' | 'person' | 'company' | 'opportunity';
+
 export type NormalizedField = {
   originalKey: string;
   canonicalName: string;
@@ -9,6 +21,14 @@ export type NormalizedField = {
   action: FieldAction;
   value: unknown;
   source: 'builtin' | 'rule' | 'passthrough';
+  targetObject: TargetObject;
+  /**
+   * Set by SyncSchemaStage once it knows what the workspace actually has. A
+   * field is writable when it is a standard field, an ext field that exists or
+   * was just created, or a rule-named field that already exists on the target.
+   * Anything else is demoted to the note rather than silently dropped.
+   */
+  writable?: boolean;
 };
 
 export type DatabaseRule = {
@@ -17,7 +37,24 @@ export type DatabaseRule = {
   fieldType: string;
   action: FieldAction;
   priority: number;
+  targetObject?: string | null;
 };
+
+/**
+ * Explicit per-key routing to the deal. `opportunity_budget`, `opp_budget` and
+ * `deal_budget` all put `extBudget` on the Opportunity, so a caller can route a
+ * field without configuring a rule first.
+ */
+const OPPORTUNITY_KEY_PREFIXES = ['opportunity_', 'opp_', 'deal_'];
+
+function parseTargetObject(raw: string | null | undefined): TargetObject {
+  switch ((raw ?? '').toUpperCase()) {
+    case 'PERSON': return 'person';
+    case 'COMPANY': return 'company';
+    case 'OPPORTUNITY': return 'opportunity';
+    default: return 'auto';
+  }
+}
 
 /**
  * Normalize a flat record of incoming key→value pairs into typed,
@@ -56,6 +93,7 @@ function normalizeField(
       action: builtIn.action,
       value,
       source: 'builtin',
+      targetObject: 'auto',
     };
   }
 
@@ -79,16 +117,25 @@ function normalizeField(
         action: rule.action,
         value,
         source: 'rule',
+        targetObject: parseTargetObject(rule.targetObject),
       };
     }
   }
 
-  // 3. Passthrough — auto-detect type, classify, ext_ prefix
+  // 3. Passthrough — auto-detect type, classify, ext prefix
   const detectedType = detectType(value);
   const classification = classify(key, value);
+
+  // An explicit opportunity prefix routes the field to the deal and is stripped
+  // before the ext name is built, so `opportunity_budget` becomes `extBudget`
+  // rather than `extOpportunityBudget`.
+  const prefix = OPPORTUNITY_KEY_PREFIXES.find((p) => lookupKey.startsWith(p));
+  const targetObject: TargetObject = prefix ? 'opportunity' : 'auto';
+  const bareKey = prefix ? lookupKey.slice(prefix.length) : key;
+
   const canonicalName =
     classification === 'field'
-      ? toExtFieldName(key)
+      ? toExtFieldName(bareKey)
       : lookupKey;
 
   return {
@@ -98,6 +145,7 @@ function normalizeField(
     action: classification === 'field' ? 'field' : classification,
     value,
     source: 'passthrough',
+    targetObject,
   };
 }
 
