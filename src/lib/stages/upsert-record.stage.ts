@@ -328,11 +328,22 @@ export class UpsertRecordStage implements PipelineStage {
       });
       const noteId = created.data.createNote.id;
 
+      // NoteTarget's columns are `targetPersonId` / `targetCompanyId`, not
+      // `personId` / `companyId`. Posting the short names created the note and
+      // silently attached it to nothing, so the lead's own message was invisible
+      // from their record — the one place anyone would look for it.
+      //
+      // The failure is reported rather than swallowed for the same reason it went
+      // unnoticed: a note nobody can find looks identical to no note at all.
       if (personId) {
-        await coreApi.post('/noteTargets', { noteId, personId }).catch(() => null);
+        await coreApi.post('/noteTargets', { noteId, targetPersonId: personId }).catch((e: Error) => {
+          ctx.warnings.push(`Could not attach the note to the person: ${e.message.slice(0, 120)}`);
+        });
       }
       if (companyId) {
-        await coreApi.post('/noteTargets', { noteId, companyId }).catch(() => null);
+        await coreApi.post('/noteTargets', { noteId, targetCompanyId: companyId }).catch((e: Error) => {
+          ctx.warnings.push(`Could not attach the note to the company: ${e.message.slice(0, 120)}`);
+        });
       }
       return noteId;
     } catch {

@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.5.1] - 2026-08-30
+
+### Fixed
+- **The note is attached to the record again.** `createNote` posted its NoteTarget as `{ noteId, personId }`, but the column is `targetPersonId` (and `targetCompanyId` for the company). Twenty rejected the write, `.catch(() => null)` swallowed it, and the note was created attached to nothing — so the lead's own message, and every field routed to note overflow, was invisible from the person's record. Found on a live lead: every structured field was correct and the note existed with `targets: 0`.
+- **Note-attachment failures are reported.** Both calls now push a warning instead of discarding the error. A note nobody can find looks exactly like no note at all, which is why this went unnoticed.
+
 ## [0.5.0] - 2026-08-30
 
 Six fidelity fixes found while gating 0.4.0 against live lead traffic on a
