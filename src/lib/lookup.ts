@@ -11,6 +11,7 @@
  */
 
 import { coreApi } from './rest-client';
+import { isFreeEmailDomain } from '../constants/free-email-domains';
 
 export type ExistingRecord = Record<string, unknown> & { id: string };
 
@@ -36,14 +37,30 @@ export async function findPersonByEmail(email: string): Promise<ExistingRecord |
   return firstMatch('people', `filter=emails.primaryEmail[eq]:${encodeURIComponent(email)}`);
 }
 
+/**
+ * The company that owns a domain, if one is already on file.
+ *
+ * A mail provider is not a domain any company owns. The lookup is a substring
+ * match, so asking it about `gmail.com` would hand back whichever company
+ * happened to have a gmail address on file and attach an unrelated lead to it —
+ * and finding nothing is worse still, because the caller then creates a company
+ * called "gmail.com". Refusing the question is the only safe answer.
+ */
 export async function findCompanyByDomain(domain: string): Promise<ExistingRecord | null> {
   if (!domain) return null;
   const host = extractHost(domain);
   if (!host) return null;
+  if (isFreeEmailDomain(host)) return null;
   return firstMatch(
     'companies',
     `filter=domainName.primaryLinkUrl[like]:%25${encodeURIComponent(host)}%25`,
   );
+}
+
+/** Whether a domain is one a company can legitimately be identified by. */
+export function isCompanyDomain(domain: string): boolean {
+  const host = extractHost(domain);
+  return host.length > 0 && !isFreeEmailDomain(host);
 }
 
 export function extractHost(url: string): string {
@@ -61,9 +78,16 @@ export function primaryEmailOf(assembled: Record<string, unknown>): string {
   return typeof value === 'string' ? value : '';
 }
 
-/** The domain an assembled payload will dedupe on, if any. */
+/**
+ * The domain an assembled payload will dedupe on, if any.
+ *
+ * The flat path assembles `domainName` into Twenty's LINKS composite, while a
+ * structured payload may hand it over as a bare string. Both are read, so the
+ * dry run and the live run see the same domain either way.
+ */
 export function primaryDomainOf(standard: Record<string, unknown>): string {
-  const domainName = standard['domainName'] as Record<string, unknown> | undefined;
-  const value = domainName?.['primaryLinkUrl'];
+  const domainName = standard['domainName'];
+  if (typeof domainName === 'string') return domainName;
+  const value = (domainName as Record<string, unknown> | undefined)?.['primaryLinkUrl'];
   return typeof value === 'string' ? value : '';
 }

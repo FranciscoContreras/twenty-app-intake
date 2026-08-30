@@ -35,7 +35,12 @@ const handler = async (params: RoutePayload) => {
     ? structure.data
     : flatten(structure.extra ?? {});
 
-  const normalized = normalizeFields(flat, rules);
+  // Declared before normalization so a precedence decision the normalizer
+  // declined shows up in the preview — the dry run is where someone checks a
+  // rule before trusting it with live traffic, so it has to say what happened.
+  const warnings: string[] = [];
+
+  const normalized = normalizeFields(flat, rules, warnings);
   const { crmFields, noteFields, skipped } = partition(normalized);
 
   const honeypot = source?.honeypotField || honeypotField();
@@ -43,7 +48,6 @@ const handler = async (params: RoutePayload) => {
   const wouldQuarantine = verdict.honeypot
     || (spamFilterEnabled() && verdict.score >= spamScoreThreshold());
 
-  const warnings: string[] = [];
   if (!source) warnings.push(`No source registered with slug "${sourceSlug}" — previewing with default settings. A live request would return 404.`);
   if (source?.status === 'PAUSED') warnings.push('This source is PAUSED — a live request would return 423.');
 

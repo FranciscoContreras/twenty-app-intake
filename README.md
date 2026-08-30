@@ -203,6 +203,18 @@ Intake accepts any valid JSON. No required fields.
 | `utm_source/medium/campaign/content/term` | Note (always) |
 | `message`, `description`, `notes`, `comments`, `analysis` | Note (always) |
 
+Key matching ignores case and separator style, so `Email`, `email`, `E-Mail`, `EMAIL`
+and `emailAddress` all reach the same mapping. Nested payloads are flattened first —
+`{"contact": {"first_name": "Jane"}}` becomes `contactFirstName`.
+
+> **Fixed in 0.5.0.** A key that merely *started* with a capital — `Email`, `Phone`,
+> `First Name`, the default labels most form builders send — missed the built-in map
+> entirely and fell through to passthrough, producing a person with an `extEmail`
+> column and no email address on the record. Because deduplication runs on the email,
+> every later submission from that person created another copy. If a source of yours
+> sends capitalised keys, look for `extEmail`, `extPhone` and `extFirstName` columns
+> left behind by earlier runs.
+
 Unknown fields get an `ext_` prefix and are created as custom fields the first time they appear.
 
 ---
@@ -213,14 +225,63 @@ Add `IntakeFieldRule` records to extend or override the built-in map for a speci
 
 | Field | Description |
 |---|---|
-| `inputPattern` | Exact key name or JavaScript regex |
+| `inputPattern` | Exact key name or JavaScript regex — see [How a pattern is matched](#how-a-pattern-is-matched) |
 | `canonicalName` | Target field in Twenty. An `ext`-prefixed name (`extBudget`) is created automatically; any other name must already exist on the target object |
-| `fieldType` | `TEXT`, `NUMBER`, `LINKS`, `EMAILS`, `PHONES`, `BOOLEAN`, `DATE_TIME`, `CURRENCY`, `NOTE`, or `SKIP` |
+| `fieldType` | `TEXT`, `NUMBER`, `BOOLEAN`, `DATE`, `DATE_TIME`, `CURRENCY`, `LINKS`, `EMAILS`, `PHONES`, `RICH_TEXT`, `RAW_JSON`, `NOTE`, or `SKIP` |
 | `targetObject` | `AUTO` (default), `PERSON`, `COMPANY`, or `OPPORTUNITY` |
 | `mergeStrategy` | `INHERIT` (default), `PRESERVE`, or `NEWEST_WINS` — see [Updating existing records](#updating-existing-records) |
 | `priority` | Higher = checked first (0–100) |
 
 Rules with no source linked apply globally across all sources.
+
+### Which mapping wins
+
+Every incoming key is resolved in this order:
+
+1. **Your rules**, highest `priority` first
+2. **The built-in map**
+3. **Passthrough** — an `ext`-prefixed custom field with an auto-detected type
+
+A rule beats the built-in map. That is what makes a rule worth configuring: it is
+how `utm_source` becomes a real field instead of a line in the note, and how a
+`website` goes somewhere other than the company's domain.
+
+> **Changed in 0.5.0.** Before 0.5.0 the built-in map was consulted *first*, so a
+> rule naming any of the 100+ built-in keys was silently ignored — the opposite of
+> what this page has always described. If you wrote a rule against a built-in key
+> and worked around it doing nothing, that workaround is now live. Check any rule
+> matching `utm_*`, `website`, `url`, `domain`, `message`, `notes`, `city`, `state`
+> or `country` before upgrading.
+
+**One exception.** A rule cannot take a contact's `name`, `email` or `phone` away
+from the contact — it may restate the mapping and set the type, target and merge
+strategy, but it cannot send the value to a different field, to the note, or to the
+bin. A person with no email cannot be found again, so the next submission from the
+same address would create a duplicate, and the one after that another. When a rule
+is turned away for this reason the ingest log says so by name.
+
+To put a second address or a company switchboard somewhere of your own, match a key
+the built-in map does not already own — `company_email`, `alt_phone`, `direct_line`.
+Those behave like any other key.
+
+### How a pattern is matched
+
+`inputPattern` is tried as an exact key name first, then as a JavaScript regex
+(case-insensitive). Both are tested against **both spellings of the key**: the
+literal key as it arrived, and its `snake_case` form.
+
+Nested payloads are flattened to camelCase before rules run, so `{"lead": {"id": 1}}`
+arrives as `leadId`. Writing `^lead_id$` or `^leadId$` therefore both work, and so
+does the bare string `lead_id`.
+
+> **Fixed in 0.5.0.** Patterns were previously tested against the camelCased key
+> only, so `^lead_id$` never matched anything while the bare string `lead_id` matched
+> fine. Patterns without underscores — `budget`, `amount`, `gclid` — were unaffected,
+> which made the failure look arbitrary. A regex that was silently dead may now start
+> matching; check any pattern you wrote with an underscore in it.
+
+A pattern that is not valid regex still works as an exact key match rather than
+being discarded.
 
 ### Writing to the Opportunity
 
@@ -250,6 +311,36 @@ in a follow-up call, so a rejected field never costs you the Opportunity itself.
 
 A field routed to the Opportunity by a source that does not create one falls back to
 the primary record, with a warning on the log.
+
+### Companies from email domains
+
+**Intake never reads an employer out of an email address.** A company is created
+only when the payload actually names one (`company`, `business`, `organization`) or
+gives a domain of its own (`website`, `domain`, `url`). A lead from
+`jane@gmail.com` with no company field creates a person and no company at all.
+
+This is deliberate. Most small-business enquiries arrive from a consumer mailbox, so
+a webhook that inferred companies from email domains would fill the Companies table
+with mail hosts — a company called "gmail.com" with forty unrelated people filed
+under it. If a mail provider arrives in a *website* field, Intake leaves it off the
+company record and says so in the ingest log rather than storing it.
+
+> **Twenty itself does infer companies this way, and it is on by default.** Every new
+> workspace is seeded with a workflow called **"Create company when adding a new
+> person"**, which fires on any person whose `emails` field is written — including
+> people created through the REST and GraphQL APIs, and therefore including everything
+> Intake writes. It extracts the domain from the person's email, creates a company for
+> it if none matches, and then **updates the person's `companyId` to point at it** —
+> overwriting the company Intake had already linked them to.
+>
+> The symptom is one lead producing two companies: the correct one on the Opportunity,
+> and a domain-named one on the Person. Twenty's workflow skips a list of common
+> personal domains (`gmail.com`, `yahoo.com`, `outlook.com`, `icloud.com` and similar),
+> so it shows up on leads from business addresses.
+>
+> Nothing an app can send suppresses it — passing an explicit `companyId` does not.
+> If you want Intake's company linkage to stand, open **Settings → Workflows**, find
+> "Create company when adding a new person", and deactivate it.
 
 ### Fields that cannot be written
 

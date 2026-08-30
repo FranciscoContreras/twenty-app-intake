@@ -26,11 +26,26 @@ export type FieldMapEntry = {
 /**
  * Normalise an incoming key to its lookup form:
  * camelCase → snake_case, hyphens/spaces → underscores, lowercase.
- * e.g. "phoneNumber" → "phone_number", "E-Mail" → "e_mail"
+ * e.g. "phoneNumber" → "phone_number", "E-Mail" → "e_mail", "Email" → "email"
+ *
+ * The underscore is inserted *between* characters, never before the first one.
+ * Prefixing every capital unconditionally turned a key that merely started with
+ * one — `Email`, `Phone`, `First Name`, the default labels of most form builders
+ * — into `_email`, which matches nothing in the map. Those payloads fell through
+ * to passthrough and produced a person with an `extEmail` column and no email
+ * address on the record: unreachable, and re-created from scratch on every
+ * submission because dedup runs on `emails.primaryEmail`.
+ *
+ * Two passes handle the two shapes of a capital: one that follows a lowercase
+ * letter or digit (`phoneNumber`), and a run of capitals followed by a word
+ * (`XMLHttpRequest`). An all-caps key like `EMAIL` has neither and lowercases
+ * cleanly. Leading underscores that were in the key to begin with survive, so
+ * the `_id` skip entry still matches.
  */
 export function normaliseKey(key: string): string {
   return key
-    .replace(/([A-Z])/g, '_$1')
+    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1_$2')
     .toLowerCase()
     .replace(/[-\s.]/g, '_')
     .replace(/_{2,}/g, '_');

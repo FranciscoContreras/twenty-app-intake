@@ -36,7 +36,14 @@ const handler = async (payload: InstallPayload) => {
   }
 
   // ── 2. Create global default IntakeFieldRules ─────────────────────────────
-  // These show users how rules work and cover the most common non-obvious mappings.
+  // These show users how rules work and restate the two most common mappings.
+  //
+  // A third seeded rule sent `fullName` to the note. It never fired while the
+  // built-in map was consulted first, so nobody noticed it was pointing a
+  // person's name at the overflow note rather than at their record. Rules now
+  // outrank the built-in map, which would have made it fire — and it is not
+  // seeded any more. Workspaces installed before 0.5.0 still hold the row; the
+  // normalizer declines it and says so on the log, and it is safe to delete.
   const defaultRules = [
     {
       inputPattern: 'phoneNumber',
@@ -50,13 +57,6 @@ const handler = async (payload: InstallPayload) => {
       canonicalName: 'email',
       fieldType: 'EMAILS',
       priority: 95,
-      isActive: true,
-    },
-    {
-      inputPattern: 'fullName',
-      canonicalName: 'fullName',
-      fieldType: 'NOTE',
-      priority: 90,
       isActive: true,
     },
   ];

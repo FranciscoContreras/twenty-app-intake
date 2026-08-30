@@ -15,7 +15,9 @@ export class NormalizeStage implements PipelineStage {
     }
 
     const rules = await this.loadRules(ctx.source?.id);
-    const normalized = normalizeFields(ctx.flat, rules);
+    // Precedence decisions the normalizer declined are reported on the log, so a
+    // rule that did not do what its author expected is visible rather than silent.
+    const normalized = normalizeFields(ctx.flat, rules, ctx.warnings);
     const { crmFields, noteFields } = partition(normalized);
 
     return ok({

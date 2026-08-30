@@ -1,5 +1,104 @@
 # Changelog
 
+## [0.5.0] - 2026-08-30
+
+Six fidelity fixes found while gating 0.4.0 against live lead traffic on a
+self-hosted Twenty v2.32.0. Three of them change how existing configuration and
+existing payloads resolve — read **Changed** before upgrading.
+
+### Changed
+
+- **⚠️ A field rule now beats the built-in map.** The README has always said rules
+  "extend or override the built-in map", but the built-in map was consulted first,
+  so a rule naming any of the 100+ built-in keys was silently inert. `utm_source`
+  stayed pinned to the note and `website` to the company's `domainName` no matter
+  what rule was written. Resolution order is now **rules → built-in map →
+  passthrough**, as documented. *If you wrote a rule against a built-in key and
+  worked around it doing nothing, that workaround is now live.* Review any rule
+  matching `utm_*`, `website`, `url`, `domain`, `message`, `notes`, `city`, `state`
+  or `country` before you upgrade.
+- **⚠️ Regex patterns containing an underscore now match.** Patterns were tested
+  only against the camelCased key produced by the flattener, so `^lead_id$` never
+  matched anything — the key was `leadId` by the time rules ran. Patterns without
+  underscores (`budget`, `amount`, `gclid`) worked, and exact snake_case strings
+  worked through a separate equality branch, which made the failure look arbitrary.
+  A pattern is now tested against both the key as it arrived and its `snake_case`
+  form, so `^lead_id$`, `^leadId$` and the bare string `lead_id` are equivalent.
+  *A regex you wrote that was silently dead may now start matching.*
+- **⚠️ A key that merely starts with a capital now reaches the built-in map.**
+  `normaliseKey` prefixed an underscore to *every* capital, so `Email` became
+  `_email` — which matches nothing. Since most form builders send their human
+  labels as keys (`Email`, `Phone`, `First Name`, `Company`), those payloads fell
+  straight through to passthrough: the person was written with an `extEmail`
+  column and **no email address on the record**, and because dedup runs on
+  `emails.primaryEmail`, every later submission from the same person created
+  another copy. The underscore is now inserted between characters rather than
+  before the first one, so `Email` → `email`, `First Name` → `first_name` and
+  `EMAIL` → `email`, while `phoneNumber` and the `_id` skip entry are unchanged.
+  *If a source of yours sends capitalised keys, values that were landing in
+  `ext*` columns will now land on the real fields instead* — check for `extEmail`,
+  `extPhone`, `extFirstName` and similar columns left behind by earlier runs.
+
+- **A rule can no longer take a contact away from itself.** The one exception to
+  the new precedence: if the built-in map holds a key as the contact's `name`,
+  `email` or `phone`, a rule may restate that mapping and set its type, target and
+  merge strategy, but may not repoint it or send it to the note or the bin. A
+  person written with no email cannot be deduplicated, so every later submission
+  from that address would create another copy. A declined rule is named in the
+  ingest log rather than failing quietly.
+- **The seeded `fullName → NOTE` rule is no longer created on install.** It never
+  fired while the built-in map won first, so nobody noticed it pointed a person's
+  name at the overflow note instead of their record — and the precedence fix would
+  have activated it. Workspaces installed before 0.5.0 still hold the row; it is
+  now declined with a warning and is safe to delete.
+
+### Fixed
+
+- **A consumer email domain can no longer become a company.** Intake never derived
+  a company from an email address, and that is now enforced and covered by tests:
+  a free, consumer or disposable mail host arriving in a `website`/`domain`/`url`
+  field is dropped from the company record with a warning instead of being stored,
+  and company dedup refuses to match on one — a substring match against
+  `gmail.com` would otherwise attach an unrelated lead to whichever company had a
+  Gmail address on file. A payload with neither a company name nor a usable domain
+  now creates no company at all rather than a blank one. Provider list:
+  `src/constants/free-email-domains.ts`.
+- **`CURRENCY` can finally be selected.** It was handled by the upsert stage and
+  documented in the README from 0.4.0, but was missing from the `fieldType`
+  dropdown, so the rule that needed it could not be saved. `DATE`, `RICH_TEXT` and
+  `RAW_JSON` were unreachable the same way and are now offered too — passthrough
+  already creates `RAW_JSON` columns unattended, so a rule had no way to name one.
+  Types the app cannot create unattended (`SELECT`, `RATING`, `FULL_NAME`,
+  `ADDRESS`) are deliberately still not offered, and a test now holds the dropdown
+  and the pipeline in step.
+- **The dry run reports precedence decisions.** `/test` now surfaces the warnings
+  the normalizer raises, so a rule that will not do what its author expects says so
+  before live traffic is switched over, and the preview's company decisions match
+  what the live run would actually write.
+
+### Known, not fixed
+
+- **Twenty creates a company from the person's email domain by itself.** Every
+  workspace is seeded with a default workflow, "Create company when adding a new
+  person", that fires on any person whose `emails` field is written — REST and
+  GraphQL writes included, so everything Intake creates. It creates a company from
+  the email domain and then overwrites the person's `companyId`, which is why one
+  lead can produce the correct company on the Opportunity and a domain-named one on
+  the Person. No API parameter suppresses it and passing an explicit `companyId`
+  does not help. Deactivate it in **Settings → Workflows**. See "Companies from
+  email domains" in the README.
+- `DUPLICATE` remains a declared `IntakeLog.status` option that is never written. A
+  duplicate is already represented by the log of the request that succeeded, so
+  recording the retry as well would double-count every ingestion in the dashboard.
+  Now documented as such rather than looking like an oversight.
+
+### Upgrading
+
+Update the app and sync the schema — the only schema change is four added
+`fieldType` options, which is additive. No data migration, and no change to any
+record already written. Review your field rules and your sources' payload keys
+against the three ⚠️ items above first.
+
 ## [0.4.0] - 2026-08-29
 
 ### Fixed

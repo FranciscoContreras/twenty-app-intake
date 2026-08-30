@@ -7,7 +7,7 @@ import { formatNote } from '../note-formatter';
 import { coreApi, gql } from '../rest-client';
 import { mergePatch, type FieldMergeStrategy } from '../merge';
 import { mergePolicy as workspaceMergePolicy, appLabel, defaultOpportunityStage } from '../settings';
-import { findPersonByEmail, findCompanyByDomain, type ExistingRecord } from '../lookup';
+import { findPersonByEmail, findCompanyByDomain, isCompanyDomain, extractHost, type ExistingRecord } from '../lookup';
 
 /**
  * Updates an existing record under the merge policy. Passed down rather than
@@ -154,12 +154,36 @@ export class UpsertRecordStage implements PipelineStage {
     customData: Record<string, unknown>,
     ctx: PipelineContext,
     patchExisting: PatchExisting,
-  ): Promise<string> {
+  ): Promise<string | undefined> {
     // Standard fields only for the initial create/update
     const standard: Record<string, unknown> = { ...structuredCompany };
     if (companyName && !standard['name']) standard['name'] = companyName;
     if (!standard['domainName'] && assembled['domainName']) standard['domainName'] = assembled['domainName'];
     if (!standard['address'] && assembled['address']) standard['address'] = assembled['address'];
+
+    // A mail provider is not a company domain. Someone filling in a form with
+    // their own address where a website was asked for must not turn Gmail into
+    // an organisation, nor match this lead onto whichever company already had a
+    // Gmail address on file.
+    // A structured payload may send `domainName` as a bare string rather than
+    // the composite shape the flat path assembles, so read both.
+    const proposedDomain = typeof standard['domainName'] === 'string'
+      ? standard['domainName']
+      : (standard['domainName'] as Record<string, unknown> | undefined)?.['primaryLinkUrl'];
+    if (typeof proposedDomain === 'string' && proposedDomain && !isCompanyDomain(proposedDomain)) {
+      delete standard['domainName'];
+      ctx.warnings.push(
+        `"${extractHost(proposedDomain)}" is an email provider, not a company domain — ` +
+        `it was left off the company record.`,
+      );
+    }
+
+    // Nothing left to identify a company by. Creating a nameless, domainless
+    // record here would be inventing an organisation out of a blank form.
+    if (!standard['name'] && !standard['domainName']) {
+      ctx.warnings.push('No company name or domain in this payload — no company was created.');
+      return undefined;
+    }
 
     // Dedup by domain
     const domain = (standard['domainName'] as Record<string, unknown> | undefined)?.['primaryLinkUrl'] as string | undefined;

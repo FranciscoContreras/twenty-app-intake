@@ -20,7 +20,7 @@ import type { NormalizedField } from './normalizer';
 import { assembleComposites } from './normalizer';
 import { mergePatch, type FieldMergeStrategy } from './merge';
 import type { MergePolicy } from './settings';
-import { findPersonByEmail, findCompanyByDomain, primaryEmailOf, primaryDomainOf } from './lookup';
+import { findPersonByEmail, findCompanyByDomain, primaryEmailOf, primaryDomainOf, isCompanyDomain, extractHost } from './lookup';
 import { metaApi } from './rest-client';
 
 export type DiffFieldStatus =
@@ -98,19 +98,35 @@ export async function buildDiff(input: DiffInput): Promise<IntakeDiff> {
     if (!standard['domainName'] && assembled['domainName']) standard['domainName'] = assembled['domainName'];
     if (!standard['address'] && assembled['address']) standard['address'] = assembled['address'];
 
-    const domain = primaryDomainOf(standard);
-    const existing = domain ? await findCompanyByDomain(domain) : null;
+    // The same refusal UpsertRecordStage makes, made here too. A preview that
+    // showed a company the live run declines to create is a preview nobody can
+    // gate a deployment on.
+    const proposedDomain = primaryDomainOf(standard);
+    if (proposedDomain && !isCompanyDomain(proposedDomain)) {
+      delete standard['domainName'];
+      input.warnings.push(
+        `"${extractHost(proposedDomain)}" is an email provider, not a company domain — ` +
+        `it was left off the company record.`,
+      );
+    }
 
-    objects.push(describe(
-      'company',
-      existing,
-      domain ? { field: 'domainName', value: domain } : null,
-      { ...standard, ...customFor(clean, 'company') },
-      clean,
-      existingFields['company'] ?? new Set(),
-      input.policy,
-      strategyFor,
-    ));
+    if (!standard['name'] && !standard['domainName']) {
+      input.warnings.push('No company name or domain in this payload — no company was created.');
+    } else {
+      const domain = primaryDomainOf(standard);
+      const existing = domain ? await findCompanyByDomain(domain) : null;
+
+      objects.push(describe(
+        'company',
+        existing,
+        domain ? { field: 'domainName', value: domain } : null,
+        { ...standard, ...customFor(clean, 'company') },
+        clean,
+        existingFields['company'] ?? new Set(),
+        input.policy,
+        strategyFor,
+      ));
+    }
   }
 
   // ── Person ───────────────────────────────────────────────────────────────

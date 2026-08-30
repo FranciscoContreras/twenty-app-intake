@@ -46,17 +46,36 @@ export default defineObject({
       name: 'fieldType',
       type: FieldType.SELECT,
       label: 'Field Type',
+      description: 'The column type to write, or NOTE / SKIP to route the value instead of storing it. Currency accepts a bare number or a written figure and is stored as a real amount, so it totals in the pipeline.',
       icon: 'IconDatabase',
+      /**
+       * Every type the pipeline can actually write, and no others.
+       *
+       * The list must stay in step with `TwentyFieldType` and with what
+       * `SyncSchemaStage.createField` can create unattended: a type needing
+       * configuration the app cannot supply — SELECT without options, RATING
+       * without a scale, the FULL_NAME and ADDRESS composites the upsert only
+       * assembles from built-in parts — would be offered here and then fail at
+       * the Metadata API, which is worse than not offering it.
+       *
+       * CURRENCY was handled by `formatExtValue` and documented in the README
+       * from 0.4.0 but was missing from this list, so the rule that needed it
+       * could not be saved.
+       */
       options: [
         { value: 'TEXT', label: 'Text', position: 0, color: 'gray' },
         { value: 'NUMBER', label: 'Number', position: 1, color: 'blue' },
         { value: 'BOOLEAN', label: 'Boolean', position: 2, color: 'green' },
-        { value: 'DATE_TIME', label: 'Date/Time', position: 3, color: 'orange' },
-        { value: 'LINKS', label: 'Link', position: 4, color: 'purple' },
-        { value: 'EMAILS', label: 'Email', position: 5, color: 'turquoise' },
-        { value: 'PHONES', label: 'Phone', position: 6, color: 'pink' },
-        { value: 'NOTE', label: 'Always Note', position: 7, color: 'yellow' },
-        { value: 'SKIP', label: 'Skip', position: 8, color: 'red' },
+        { value: 'DATE', label: 'Date', position: 3, color: 'orange' },
+        { value: 'DATE_TIME', label: 'Date/Time', position: 4, color: 'orange' },
+        { value: 'CURRENCY', label: 'Currency', position: 5, color: 'green' },
+        { value: 'LINKS', label: 'Link', position: 6, color: 'purple' },
+        { value: 'EMAILS', label: 'Email', position: 7, color: 'turquoise' },
+        { value: 'PHONES', label: 'Phone', position: 8, color: 'pink' },
+        { value: 'RICH_TEXT', label: 'Rich text', position: 9, color: 'blue' },
+        { value: 'RAW_JSON', label: 'JSON', position: 10, color: 'gray' },
+        { value: 'NOTE', label: 'Always Note', position: 11, color: 'yellow' },
+        { value: 'SKIP', label: 'Skip', position: 12, color: 'red' },
       ],
       defaultValue: "'TEXT'",
     },

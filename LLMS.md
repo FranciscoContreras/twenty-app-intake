@@ -71,7 +71,7 @@ Full audit trail of every payload received.
 | Field | Type | Description |
 |---|---|---|
 | `intakeSource` | RELATION → IntakeSource | Which source fired |
-| `status` | SELECT: SUCCESS, PARTIAL, FAILED, DUPLICATE, QUARANTINED, DISCARDED | Outcome |
+| `status` | SELECT: SUCCESS, PARTIAL, FAILED, QUARANTINED, DISCARDED | Outcome. `DUPLICATE` is a declared option that is never written: a duplicate is already represented by the log of the request that succeeded, so recording the retry too would double-count every ingestion. |
 | `payloadHash` | TEXT | SHA-256 of raw payload for idempotency |
 | `rawPayload` | TEXT | Original JSON payload (used for retries) |
 | `recordId` | TEXT (nullable) | ID of created/updated CRM record |
@@ -96,7 +96,7 @@ User-configurable normalization rules. Null source = global rule.
 | `intakeSource` | RELATION → IntakeSource (nullable) | Null = applies to all sources |
 | `inputPattern` | TEXT | Exact key name or JavaScript regex string |
 | `canonicalName` | TEXT | Target field name in Twenty |
-| `fieldType` | SELECT: TEXT, NUMBER, LINKS, EMAILS, PHONES, BOOLEAN, DATE_TIME, CURRENCY, NOTE, SKIP | Field type. NOTE routes to the note; SKIP discards. |
+| `fieldType` | SELECT: TEXT, NUMBER, BOOLEAN, DATE, DATE_TIME, CURRENCY, LINKS, EMAILS, PHONES, RICH_TEXT, RAW_JSON, NOTE, SKIP | Field type. NOTE routes to the note; SKIP discards. CURRENCY, DATE, RICH_TEXT and RAW_JSON became selectable in 0.5.0. |
 | `targetObject` | SELECT: AUTO, PERSON, COMPANY, OPPORTUNITY | Which record the field is written to |
 | `mergeStrategy` | SELECT: INHERIT, PRESERVE, NEWEST_WINS | Per-field override of the merge policy |
 | `priority` | NUMBER | Higher = checked first (0–100) |
@@ -277,11 +277,35 @@ Two independent mechanisms:
 
 ## Field normalization rules
 
-Intake ships a built-in map of 100+ field name variations. Rules are checked in this priority order:
+Intake ships a built-in map of 100+ field name variations. Each incoming key is resolved in this order:
 
-1. **BuiltInMapStrategy** (priority 100) — hardcoded dictionary
-2. **DatabaseRulesStrategy** (priority 90) — user-defined IntakeFieldRule records, sorted by priority desc
-3. **PassthroughStrategy** (priority 0) — unknown fields get `ext` prefix + PascalCase + auto-detected type
+1. **Database rules** — user-defined IntakeFieldRule records, sorted by `priority` desc
+2. **Built-in map** — hardcoded dictionary of 100+ known key variations
+3. **Passthrough** — unknown fields get an `ext` prefix + PascalCase + auto-detected type
+
+A rule beats the built-in map. **This order was reversed before 0.5.0**, which made a rule
+naming any built-in key silently inert — contradicting the documented behavior.
+
+**The one exception.** If the built-in map holds a key as the contact's `email`, `phone`,
+`firstName`, `lastName` or `fullName`, a rule may restate that mapping and set its type,
+target and merge strategy, but may not change its `canonicalName` or route it to
+`NOTE`/`SKIP`. A person written without an email cannot be deduplicated, so every later
+submission from that address would create another copy. A declined rule appends a warning
+to the ingest log naming the rule and the field.
+
+**Key matching.** Keys are matched case- and separator-insensitively: `Email`, `email`,
+`E-Mail`, `EMAIL` and `emailAddress` all reach the same built-in entry. Before 0.5.0 an
+underscore was prefixed to every capital, so a key merely *starting* with one (`Email`,
+`First Name` — the default labels of most form builders) normalised to `_email` and matched
+nothing, producing a person with an `extEmail` column and no email address, and therefore a
+fresh duplicate on every submission.
+
+**Pattern matching.** `inputPattern` is tried as an exact key name, then as a
+case-insensitive JavaScript regex, and both are tested against the key as it arrived *and*
+its `snake_case` form. Payload keys are camelCased by the flattener before rules run, so
+`^lead_id$`, `^leadId$` and the bare string `lead_id` all match a payload key of `lead_id`.
+Before 0.5.0 only the camelCased form was tested, so any regex containing an underscore
+never matched. An unparseable pattern degrades to exact-match rather than being discarded.
 
 **Classification rules (field vs note):**
 - Named `message`, `description`, `analysis`, `notes`, `comments`, `summary`, `inquiry`, `body`, `details`, `content`, `feedback` → always note
@@ -289,6 +313,21 @@ Intake ships a built-in map of 100+ field name variations. Rules are checked in 
 - Contains line breaks or 2+ sentences → note
 - Arrays or objects → note
 - Everything else → field
+
+**Companies from email domains.** Intake never derives a company from an email address. A
+company is created only when the payload names one (`company`, `business`, `organization`)
+or supplies a domain of its own (`website`, `domain`, `url`). A lead from `jane@gmail.com`
+with no company field creates a person and no company. If a free/consumer/disposable mail
+host arrives in a website or domain field it is dropped from the company record and a
+warning is logged; company dedup also refuses to match on such a host. The provider list is
+`src/constants/free-email-domains.ts`.
+
+Note that **Twenty itself does infer companies this way**: every workspace is seeded with a
+default workflow, "Create company when adding a new person", which fires on any person whose
+`emails` field is written — including REST/GraphQL writes, and therefore everything Intake
+creates. It creates a company from the email domain and overwrites the person's `companyId`,
+so one lead can end up with the correct company on the Opportunity and a domain-named one on
+the Person. No API parameter suppresses it; deactivate the workflow in Settings → Workflows.
 
 **Custom field naming:** Unknown fields become `extCamelCase` (e.g. `project_budget` → `extProjectBudget`). Must be alphanumeric — Twenty's Metadata API requirement.
 

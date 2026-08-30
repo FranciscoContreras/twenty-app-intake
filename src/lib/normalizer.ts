@@ -87,34 +87,134 @@ function parseTargetObject(raw: string | null | undefined): TargetObject {
 }
 
 /**
+ * The canonical names that make a contact findable and reachable.
+ *
+ * A rule outranks the built-in map everywhere except here. These five names are
+ * the ones `assembleComposites` folds into `name`, `emails` and `phones`, and
+ * `email` is additionally the key every person dedup runs on — so a pattern that
+ * swept one of them into the note would create contacts with no address to write
+ * to and a fresh duplicate on every submission, silently and forever.
+ *
+ * The protection is narrow: a rule may still restate one of these mappings, and
+ * may still set its type, target and merge strategy. What it may not do is send
+ * the value to a different field, to the note, or to the bin.
+ *
+ * A rule that wants a company address or a second phone should match a key the
+ * built-in map does not already own (`company_email`, `alt_phone`); those are
+ * unprotected and behave like any other key.
+ */
+const PROTECTED_CANONICAL_NAMES = new Set([
+  'email', 'phone', 'firstName', 'lastName', 'fullName',
+]);
+
+type CompiledRule = DatabaseRule & { matcher: RegExp | null };
+
+/**
+ * Compile once per ingestion rather than once per key. An unparseable pattern
+ * keeps the rule alive as an exact-match-only rule instead of discarding it.
+ */
+function compileRule(rule: DatabaseRule): CompiledRule {
+  try {
+    return { ...rule, matcher: new RegExp(rule.inputPattern, 'i') };
+  } catch {
+    return { ...rule, matcher: null };
+  }
+}
+
+/**
+ * Whether a rule claims a key.
+ *
+ * Both spellings of the key are offered to the pattern. `flatten` camelCases
+ * every incoming key before rules run, so a payload sending `lead_id` arrives
+ * here as `leadId`; testing only that form made `^lead_id$` silently never
+ * match while the exact string `lead_id` matched fine through the equality
+ * branch — the same rule working or not depending on whether the author reached
+ * for a regex. Matching against the original and the normalised form makes
+ * `^lead_id$` and `^leadId$` equally valid ways to say the same thing.
+ */
+function ruleMatches(rule: CompiledRule, key: string, lookupKey: string): boolean {
+  if (rule.inputPattern === key || rule.inputPattern === lookupKey) return true;
+  if (!rule.matcher) return false;
+  return rule.matcher.test(key) || rule.matcher.test(lookupKey);
+}
+
+/**
  * Normalize a flat record of incoming key→value pairs into typed,
  * canonically-named fields ready for classification and schema sync.
  *
  * Strategy priority:
- *  1. Built-in field map  (highest — covers known common variations)
- *  2. Database rules      (user-configured per source or global)
- *  3. Passthrough         (unknown fields get ext_ prefix + auto type detection)
+ *  1. Database rules      (highest — user-configured per source or global)
+ *  2. Built-in field map  (covers known common variations)
+ *  3. Passthrough         (unknown fields get an ext prefix + auto type detection)
+ *
+ * Rules come first because that is what "override the built-in map" has to mean
+ * to be worth configuring: a source that reports `utm_source` as a real field,
+ * or a `website` that belongs on the deal rather than the company, cannot be
+ * expressed at all if a built-in entry silently wins first. The one exception is
+ * PROTECTED_CANONICAL_NAMES.
+ *
+ * Anything the precedence declines is appended to `warnings`, so a rule that did
+ * not do what its author expected says so on the log instead of being invisible.
  */
 export function normalizeFields(
   flat: Record<string, unknown>,
   rules: DatabaseRule[] = [],
+  warnings: string[] = [],
 ): NormalizedField[] {
-  const sorted = [...rules].sort((a, b) => b.priority - a.priority);
+  const compiled = [...rules]
+    .sort((a, b) => b.priority - a.priority)
+    .map(compileRule);
 
   return Object.entries(flat).map(([key, value]) =>
-    normalizeField(key, value, sorted),
+    normalizeField(key, value, compiled, warnings),
   );
 }
 
 function normalizeField(
   key: string,
   value: unknown,
-  rules: DatabaseRule[],
+  rules: CompiledRule[],
+  warnings: string[],
 ): NormalizedField {
   const lookupKey = normaliseKey(key);
-
-  // 1. Built-in map
   const builtIn = FIELD_MAP[lookupKey];
+
+  // 1. Database rules (exact match or regex), highest priority first
+  for (const rule of rules) {
+    if (!ruleMatches(rule, key, lookupKey)) continue;
+
+    // A rule that agrees with the built-in about where a protected value goes is
+    // free to restate it — that is what the seeded `emailAddress → email` rules
+    // do, and declining them would warn on a workspace that has done nothing
+    // wrong. Only a rule that would move the value somewhere else, or stop it
+    // being written at all, is turned away.
+    if (builtIn && PROTECTED_CANONICAL_NAMES.has(builtIn.canonicalName)) {
+      const displaces =
+        rule.canonicalName !== builtIn.canonicalName || actionForRule(rule) !== 'field';
+      if (displaces) {
+        warnings.push(
+          `Rule "${rule.inputPattern}" matched "${key}", which the built-in map holds as the ` +
+          `contact's ${builtIn.canonicalName}. The built-in mapping was kept: a contact with no ` +
+          `${builtIn.canonicalName} cannot be found again, so every submission would create a ` +
+          `duplicate. Point the rule at a key the built-in map does not already own.`,
+        );
+        continue;
+      }
+    }
+
+    return {
+      originalKey: key,
+      canonicalName: rule.canonicalName,
+      twentyType: typeForRule(rule),
+      action: actionForRule(rule),
+      value,
+      source: 'rule',
+      targetObject: parseTargetObject(rule.targetObject),
+      mergeStrategy: parseFieldMergeStrategy(rule.mergeStrategy),
+    };
+  }
+
+  // 2. Built-in map
   if (builtIn) {
     return {
       originalKey: key,
@@ -125,32 +225,6 @@ function normalizeField(
       source: 'builtin',
       targetObject: 'auto',
     };
-  }
-
-  // 2. Database rules (exact match or regex)
-  for (const rule of rules) {
-    let matches = false;
-    try {
-      matches =
-        rule.inputPattern === key ||
-        rule.inputPattern === lookupKey ||
-        new RegExp(rule.inputPattern, 'i').test(key);
-    } catch {
-      matches = rule.inputPattern === key;
-    }
-
-    if (matches) {
-      return {
-        originalKey: key,
-        canonicalName: rule.canonicalName,
-        twentyType: typeForRule(rule),
-        action: actionForRule(rule),
-        value,
-        source: 'rule',
-        targetObject: parseTargetObject(rule.targetObject),
-        mergeStrategy: parseFieldMergeStrategy(rule.mergeStrategy),
-      };
-    }
   }
 
   // 3. Passthrough — auto-detect type, classify, ext prefix
