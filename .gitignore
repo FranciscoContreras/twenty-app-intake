@@ -20,3 +20,9 @@ dist/
 .env
 .env.*
 *.local
+
+# Registry credentials — must never be committed. A publish token belongs in
+# ~/.npmrc, outside any repository; this repo is public and npm revokes tokens
+# it finds in public source.
+.npmrc
+.yarnrc.yml
